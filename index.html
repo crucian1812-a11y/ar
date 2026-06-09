@@ -29,6 +29,8 @@
     transition:opacity .3s;backdrop-filter:blur(4px);max-width:86%;text-align:center;
   }
   .hidden{display:none !important;}
+  /* сцена на весь экран в embedded-режиме (без входа в VR) */
+  a-scene{position:fixed !important;top:0;left:0;width:100% !important;height:100% !important;z-index:1;}
 </style>
 </head>
 <body>
@@ -47,12 +49,14 @@
          preload="auto" crossorigin="anonymous" style="display:none"></video>
 
   <a-scene
+    embedded
     mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.001"
     loading-screen="enabled: false"
     color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights"
-    vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+    vr-mode-ui="enabled: false" webxr="optionalFeatures: ;"
+    device-orientation-permission-ui="enabled: false">
 
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    <a-camera position="0 0 0" look-controls="enabled: false" wasd-controls="enabled: false"></a-camera>
 
     <a-entity id="target" mindar-image-target="targetIndex: 0">
       <a-video src="#towerVid" width="1" height="1.4" position="0 0 0"></a-video>
@@ -64,6 +68,9 @@
   var intro = document.getElementById('intro');
   var status = document.getElementById('status');
   var vid = document.getElementById('towerVid');
+
+  // страховка: не пускать в VR-режим (экран Cardboard)
+  scene.addEventListener('enter-vr', function(){ try{ scene.exitVR(); }catch(e){} });
 
   document.getElementById('startBtn').addEventListener('click', function(){
     intro.classList.add('hidden');
