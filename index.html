@@ -29,8 +29,8 @@
     transition:opacity .3s;backdrop-filter:blur(4px);max-width:86%;text-align:center;
   }
   .hidden{display:none !important;}
-  /* сцена на весь экран в embedded-режиме (без входа в VR) */
-  a-scene{position:fixed !important;top:0;left:0;width:100% !important;height:100% !important;z-index:1;}
+  /* прячем VR/AR кнопки и модалку ориентации, чтобы не входить в режим очков */
+  .a-enter-vr, .a-enter-ar, .a-orientation-modal{display:none !important;}
 </style>
 </head>
 <body>
@@ -40,6 +40,7 @@
     <p>Наведи камеру на чертёж <b>башни Шухова</b> — и инженер оживит конструкцию.</p>
     <div class="step">1. Нажми «Включить камеру»<br>2. Наведи на картинку башни целиком<br>3. Дождись, пока башня загорится</div>
     <button id="startBtn">Включить камеру</button>
+    <div style="margin-top:20px;font-size:13px;color:#6f5d35;">версия v4</div>
   </div>
 
   <div id="status" class="hidden">Ищу башню… наведи камеру на чертёж</div>
@@ -49,11 +50,10 @@
          preload="auto" crossorigin="anonymous" style="display:none"></video>
 
   <a-scene
-    embedded
     mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.001"
     loading-screen="enabled: false"
     color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights"
-    vr-mode-ui="enabled: false" webxr="optionalFeatures: ;"
+    vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false">
 
     <a-camera position="0 0 0" look-controls="enabled: false" wasd-controls="enabled: false"></a-camera>
@@ -75,11 +75,25 @@
   document.getElementById('startBtn').addEventListener('click', function(){
     intro.classList.add('hidden');
     status.classList.remove('hidden');
+    status.textContent = 'Запрашиваю камеру…';
     // "разблокируем" видео жестом пользователя (политика автозапуска)
     vid.muted = true;
     var pp = vid.play();
     if (pp && pp.then) pp.then(function(){ vid.pause(); vid.currentTime = 0; }).catch(function(){});
-    startAR();
+    // явно проверим доступ к камере, чтобы поймать отказ
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+      navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
+        .then(function(stream){
+          stream.getTracks().forEach(function(t){ t.stop(); }); // освобождаем, MindAR откроет свою
+          status.textContent = 'Ищу башню… наведи камеру на чертёж';
+          startAR();
+        })
+        .catch(function(err){
+          status.textContent = 'Нет доступа к камере. Разреши камеру для сайта в настройках Chrome и обнови страницу.';
+        });
+    } else {
+      status.textContent = 'Браузер не поддерживает камеру. Открой ссылку в обычном Chrome.';
+    }
   });
 
   function startAR(){
