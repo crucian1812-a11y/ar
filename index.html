@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>AR · Башня Шухова · Машина времени</title>
+<script src="aframe.min.js"></script>
+<script src="mindar-image-aframe.prod.js"></script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;font-family:Georgia,serif;background:#13110c;}
+  /* экран-подсказка перед стартом */
+  #intro{
+    position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;color:#f0e6cc;
+    background:radial-gradient(circle at 50% 35%,#2a2114,#13110c);padding:24px;
+  }
+  #intro h1{color:#d9ad44;font-size:30px;margin:0 0 6px;}
+  #intro p{font-size:17px;max-width:330px;line-height:1.5;color:#e3d2a8;margin:6px 0;}
+  #intro .step{font-size:15px;color:#9b8e6a;margin-top:14px;}
+  #startBtn{
+    margin-top:26px;padding:15px 32px;border:none;border-radius:40px;cursor:pointer;
+    background:linear-gradient(180deg,#e8c468,#b9851f);color:#13110c;
+    font-family:Georgia,serif;font-weight:bold;font-size:18px;letter-spacing:.04em;
+    box-shadow:0 6px 20px rgba(201,150,46,.4);
+  }
+  /* статус-плашка во время AR */
+  #status{
+    position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:20;
+    background:rgba(19,17,12,.82);color:#e8c468;border:1px solid #6f5d35;
+    padding:10px 18px;border-radius:30px;font-size:15px;letter-spacing:.03em;
+    transition:opacity .3s;backdrop-filter:blur(4px);
+  }
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+  <div id="intro">
+    <h1>★ Станция 01 · Каркас ★</h1>
+    <p>Наведи камеру на чертёж <b>башни Шухова</b> — и инженер оживит конструкцию.</p>
+    <div class="step">1. Нажми «Включить камеру»<br>2. Наведи на картинку башни целиком<br>3. Дождись, пока башня загорится</div>
+    <button id="startBtn">Включить камеру</button>
+  </div>
+
+  <div id="status" class="hidden">Ищу башню… наведи камеру на чертёж</div>
+
+  <!-- Сцена скрыта до нажатия, чтобы камера не включалась сама -->
+  <a-scene id="scene" class="hidden"
+    mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.001"
+    color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights"
+    vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+
+    <a-assets>
+      <video id="towerVid" src="tower_alive.mp4" preload="auto"
+             loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- target 0 = наша башня. Видео ложится поверх картинки. -->
+    <a-entity mindar-image-target="targetIndex: 0">
+      <!-- В MindAR ширина цели = 1, высота = imageHeight/imageWidth = 1064/760 ≈ 1.4 -->
+      <a-video src="#towerVid" width="1" height="1.4" position="0 0 0" rotation="0 0 0"></a-video>
+    </a-entity>
+  </a-scene>
+
+<script>
+  var scene = document.getElementById('scene');
+  var intro = document.getElementById('intro');
+  var status = document.getElementById('status');
+  var vid = document.getElementById('towerVid');
+  var started = false;
+
+  document.getElementById('startBtn').addEventListener('click', function(){
+    intro.classList.add('hidden');
+    scene.classList.remove('hidden');
+    status.classList.remove('hidden');
+    startAR();
+  });
+
+  function startAR(){
+    var sys = scene.systems['mindar-image-system'];
+    function go(){
+      if (scene.systems['mindar-image-system']) {
+        scene.systems['mindar-image-system'].start();
+        started = true;
+      } else {
+        setTimeout(go, 200);
+      }
+    }
+    // дождаться инициализации сцены
+    if (scene.hasLoaded) go(); else scene.addEventListener('loaded', go);
+  }
+
+  // события распознавания на самой цели
+  scene.addEventListener('loaded', function(){
+    var target = document.querySelector('[mindar-image-target]');
+    target.addEventListener('targetFound', function(){
+      status.textContent = '⚙ Башня оживает!';
+      var p = vid.play(); if (p && p.catch) p.catch(function(){});
+    });
+    target.addEventListener('targetLost', function(){
+      status.textContent = 'Ищу башню… наведи камеру на чертёж';
+      vid.pause();
+    });
+  });
+</script>
+</body>
+</html>
