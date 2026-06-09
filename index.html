@@ -23,7 +23,7 @@
     box-shadow:0 6px 20px rgba(201,150,46,.4);
   }
   #status{
-    position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:20;
+    position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:100000;
     background:rgba(19,17,12,.82);color:#e8c468;border:1px solid #6f5d35;
     padding:10px 18px;border-radius:30px;font-size:15px;letter-spacing:.03em;
     transition:opacity .3s;backdrop-filter:blur(4px);max-width:86%;text-align:center;
@@ -40,7 +40,7 @@
     <p>Наведи камеру на чертёж <b>башни Шухова</b> — и инженер оживит конструкцию.</p>
     <div class="step">1. Нажми «Включить камеру»<br>2. Наведи на картинку башни целиком<br>3. Дождись, пока башня загорится</div>
     <button id="startBtn">Включить камеру</button>
-    <div style="margin-top:20px;font-size:13px;color:#6f5d35;">версия v4</div>
+    <div style="margin-top:20px;font-size:13px;color:#6f5d35;">версия v5</div>
   </div>
 
   <div id="status" class="hidden">Ищу башню… наведи камеру на чертёж</div>
@@ -75,36 +75,24 @@
   document.getElementById('startBtn').addEventListener('click', function(){
     intro.classList.add('hidden');
     status.classList.remove('hidden');
-    status.textContent = 'Запрашиваю камеру…';
+    status.textContent = 'Включаю камеру…';
     // "разблокируем" видео жестом пользователя (политика автозапуска)
     vid.muted = true;
     var pp = vid.play();
     if (pp && pp.then) pp.then(function(){ vid.pause(); vid.currentTime = 0; }).catch(function(){});
-    // явно проверим доступ к камере, чтобы поймать отказ
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-      navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
-        .then(function(stream){
-          stream.getTracks().forEach(function(t){ t.stop(); }); // освобождаем, MindAR откроет свою
-          status.textContent = 'Ищу башню… наведи камеру на чертёж';
-          startAR();
-        })
-        .catch(function(err){
-          status.textContent = 'Нет доступа к камере. Разреши камеру для сайта в настройках Chrome и обнови страницу.';
-        });
-    } else {
-      status.textContent = 'Браузер не поддерживает камеру. Открой ссылку в обычном Chrome.';
-    }
+    startAR();
   });
 
   function startAR(){
     function go(){
       var sys = scene.systems && scene.systems['mindar-image-system'];
-      if (sys) {
-        try { sys.start(); }
-        catch(e){ status.textContent = 'Не удалось включить камеру. Разреши доступ и обнови страницу.'; }
-      } else {
-        setTimeout(go, 200);
-      }
+      if (!sys){ setTimeout(go, 200); return; }
+      // MindAR сам открывает камеру и сам спросит доступ
+      Promise.resolve(sys.start())
+        .then(function(){ status.textContent = 'Ищу башню… наведи камеру на чертёж'; })
+        .catch(function(err){
+          status.textContent = 'Нет доступа к камере. Разреши камеру для сайта и обнови страницу.';
+        });
     }
     if (scene.hasLoaded) go(); else scene.addEventListener('loaded', go);
   }
