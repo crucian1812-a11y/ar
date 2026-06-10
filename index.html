@@ -40,7 +40,7 @@
     <p>Наведи камеру на чертёж <b>башни Шухова</b> — и инженер оживит конструкцию.</p>
     <div class="step">1. Нажми «Включить камеру»<br>2. Наведи на картинку башни целиком<br>3. Дождись, пока башня загорится</div>
     <button id="startBtn">Включить камеру</button>
-    <div style="margin-top:20px;font-size:13px;color:#6f5d35;">версия v5</div>
+    <div style="margin-top:20px;font-size:13px;color:#6f5d35;">версия v6</div>
   </div>
 
   <div id="status" class="hidden">Ищу башню… наведи камеру на чертёж</div>
@@ -68,9 +68,41 @@
   var intro = document.getElementById('intro');
   var status = document.getElementById('status');
   var vid = document.getElementById('towerVid');
+  var renderStarted = false;
+  var wantStart = false;
+
+  // экранная диагностика: любые ошибки видим прямо на странице
+  function showErr(msg){
+    status.classList.remove('hidden');
+    status.textContent = '⚠ ' + msg;
+  }
+  window.addEventListener('error', function(e){
+    showErr('Ошибка: ' + (e.message || 'неизвестная'));
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var r = e.reason; showErr('Ошибка: ' + (r && r.message ? r.message : r));
+  });
 
   // страховка: не пускать в VR-режим (экран Cardboard)
   scene.addEventListener('enter-vr', function(){ try{ scene.exitVR(); }catch(e){} });
+
+  // MindAR надо стартовать только после начала рендера
+  scene.addEventListener('renderstart', function(){
+    renderStarted = true;
+    if (wantStart) doStart();
+  });
+
+  function doStart(){
+    var sys = scene.systems && scene.systems['mindar-image-system'];
+    if (!sys){ showErr('AR-движок не загрузился. Обнови страницу.'); return; }
+    try{
+      Promise.resolve(sys.start())
+        .then(function(){ status.textContent = 'Ищу башню… наведи камеру на чертёж'; })
+        .catch(function(err){ showErr('Камера не запустилась: ' + (err && err.message ? err.message : err)); });
+    }catch(err){
+      showErr('Камера не запустилась: ' + (err && err.message ? err.message : err));
+    }
+  }
 
   document.getElementById('startBtn').addEventListener('click', function(){
     intro.classList.add('hidden');
@@ -80,22 +112,16 @@
     vid.muted = true;
     var pp = vid.play();
     if (pp && pp.then) pp.then(function(){ vid.pause(); vid.currentTime = 0; }).catch(function(){});
-    startAR();
+    wantStart = true;
+    if (renderStarted) doStart();
+    else status.textContent = 'Готовлю AR…';
+    // если за 6 секунд ничего не произошло — подсказать
+    setTimeout(function(){
+      if (status.textContent === 'Готовлю AR…' || status.textContent === 'Включаю камеру…'){
+        showErr('AR не стартовал за 6 сек. Напиши, что видишь на экране.');
+      }
+    }, 6000);
   });
-
-  function startAR(){
-    function go(){
-      var sys = scene.systems && scene.systems['mindar-image-system'];
-      if (!sys){ setTimeout(go, 200); return; }
-      // MindAR сам открывает камеру и сам спросит доступ
-      Promise.resolve(sys.start())
-        .then(function(){ status.textContent = 'Ищу башню… наведи камеру на чертёж'; })
-        .catch(function(err){
-          status.textContent = 'Нет доступа к камере. Разреши камеру для сайта и обнови страницу.';
-        });
-    }
-    if (scene.hasLoaded) go(); else scene.addEventListener('loaded', go);
-  }
 
   function bindTarget(){
     var target = document.getElementById('target');
