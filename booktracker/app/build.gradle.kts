@@ -75,7 +75,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.6.0")
 
     // OCR (offline, Cyrillic-capable)
-    implementation("cz.adaptech.tesseract4android:tesseract4android:4.7.0")
+    implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
