@@ -191,14 +191,47 @@ func _make_tree(pos: Vector3) -> void:
 
 func _build_town() -> void:
 	# Saint-Sophia-like church with golden onion dome at the clearing centre
-	_church(Vector3(0, terrain_height(0, -6), -6))
-	# kremlin towers around it
-	_tower(Vector3(-16, terrain_height(-16, 4), 4))
-	_tower(Vector3(16, terrain_height(16, 4), 4))
-	_tower(Vector3(0, terrain_height(0, 16), 16))
-	# a couple of izbas (wooden houses)
-	_izba(Vector3(-10, terrain_height(-10, -16), -16))
-	_izba(Vector3(11, terrain_height(11, -15), -15))
+	_church(Vector3(0, 0, -4))
+
+	# Kremlin: ring wall with a gate gap and flanking/­corner towers
+	var ring := 37.0
+	var seg := 20
+	var gate := PI * 0.5      # gate opens toward +Z (where the player starts)
+	for i in range(seg):
+		var a := TAU * float(i) / float(seg)
+		if absf(_angdiff(a, gate)) < 0.33:
+			continue
+		var x := cos(a) * ring
+		var z := sin(a) * ring
+		_wall(Vector3(x, 0, z), atan2(x, z))
+	for i in range(0, seg, 5):
+		var a2 := TAU * float(i) / float(seg)
+		_tower(Vector3(cos(a2) * ring, 0, sin(a2) * ring))
+	_tower(Vector3(cos(gate - 0.33) * ring, 0, sin(gate - 0.33) * ring))
+	_tower(Vector3(cos(gate + 0.33) * ring, 0, sin(gate + 0.33) * ring))
+
+	# Village of izbas inside the walls
+	for s in [Vector3(-22, 0, -8), Vector3(-26, 0, 3), Vector3(-20, 0, 12),
+			Vector3(22, 0, -10), Vector3(26, 0, 1), Vector3(20, 0, 13)]:
+		_izba(s)
+
+func _angdiff(a: float, b: float) -> float:
+	return fmod(a - b + PI, TAU) - PI
+
+func _wall(pos: Vector3, yaw: float) -> void:
+	var root := Node3D.new()
+	root.position = pos
+	root.rotation.y = yaw
+	add_child(root)
+	var w := MeshInstance3D.new()
+	var bm := BoxMesh.new(); bm.size = Vector3(12.0, 5.0, 1.3)
+	w.mesh = bm; w.material_override = _flat(Color(0.52, 0.43, 0.33))
+	w.position = Vector3(0, 2.5, 0); root.add_child(w)
+	for k in [-4.0, 0.0, 4.0]:
+		var mer := MeshInstance3D.new()
+		var mm := BoxMesh.new(); mm.size = Vector3(1.7, 1.2, 1.6)
+		mer.mesh = mm; mer.material_override = _flat(Color(0.46, 0.38, 0.30))
+		mer.position = Vector3(k, 5.4, 0); root.add_child(mer)
 
 func _church(pos: Vector3) -> void:
 	var root := Node3D.new(); root.position = pos; add_child(root)
@@ -260,16 +293,25 @@ func _spawn_player() -> void:
 
 func _spawn_wave() -> void:
 	wave += 1
-	var n := 3 + wave
-	for i in range(n):
-		var ang := randf() * TAU
-		var dist := randf_range(28.0, 48.0)
-		var x := cos(ang) * dist
-		var z := sin(ang) * dist
-		var e = preload("res://Enemy.gd").new()
+	var count: int = min(5 + wave * 2, 26)
+	for i in range(count):
+		var r := randf()
+		var k: int
+		if wave >= 3 and r < 0.12:
+			k = GameEnemy.Kind.BRUTE
+		elif r < 0.30:
+			k = GameEnemy.Kind.ARCHER
+		elif r < 0.58:
+			k = GameEnemy.Kind.SPEARMAN
+		else:
+			k = GameEnemy.Kind.RAIDER
+		var e := GameEnemy.new()
+		e.kind = k
 		e.main = self
 		add_child(e)
-		e.global_position = Vector3(x, terrain_height(x, z) + 1.5, z)
+		var ang := randf() * TAU
+		var dist := randf_range(30.0, 46.0)
+		e.global_position = Vector3(cos(ang) * dist, 3.0, sin(ang) * dist)
 		alive += 1
 
 func on_enemy_killed() -> void:

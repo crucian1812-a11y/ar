@@ -128,6 +128,3 @@ func _draw() -> void:
 		draw_string(font, Vector2(bx + 8, by + 19), "ВИТЯЗЬ", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
 		var info := "Волна %d   Враги: %d   Повержено: %d" % [wave, alive, kills]
 		draw_string(font, Vector2(v.x - 24, by + 19), info, HORIZONTAL_ALIGNMENT_RIGHT, -1, 18, Color.WHITE)
-		# DEBUG line (temporary)
-		var dbg := "ev:%d joy:(%.2f,%.2f) vel:%.1f floor:%s y:%.1f vy:%.1f" % [_ev, move_vec.x, move_vec.y, dbg_speed, str(dbg_floor), dbg_y, dbg_vy]
-		draw_string(font, Vector2(v.x * 0.5, 64), dbg, HORIZONTAL_ALIGNMENT_CENTER, -1, 20, Color(1, 1, 0.4))

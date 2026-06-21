@@ -150,6 +150,10 @@ func take_damage(d: float) -> void:
 		global_position = Vector3(0, (main.terrain_height(0, 8) if main else 0.0) + 2.0, 8)
 		velocity = Vector3.ZERO
 
+func knockback(dir: Vector3, force: float) -> void:
+	velocity.x += dir.x * force
+	velocity.z += dir.z * force
+
 func _update_camera() -> void:
 	var target := global_position + Vector3.UP * 1.6
 	var horiz := CAM_DIST * cos(cam_pitch)
