@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -137,7 +138,7 @@ fun AddEditBookScreen(
                             AsyncImage(
                                 model = File(coverPath!!),
                                 contentDescription = "Обложка",
-                                modifier = Modifier.size(90.dp, 130.dp).clip(RoundedCornerShape(6.dp))
+                                modifier = Modifier.size(90.dp, 130.dp).clip(RectangleShape)
                             )
                         } else {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {

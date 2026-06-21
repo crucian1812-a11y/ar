@@ -72,7 +72,6 @@ fun BarChart(
                         .padding(top = 2.dp)
                         .fillMaxWidth()
                         .height((4 + 96 * fraction).dp)
-                        .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
                         .background(if (value > 0) barColor else barColor.copy(alpha = 0.18f))
                 )
                 Spacer(Modifier.height(4.dp))
@@ -112,15 +111,13 @@ fun RatingStars(
 fun ProgressBarLine(progress: Float, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .clip(RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .height(8.dp)
+            .height(10.dp)
     ) {
         Box(
             Modifier
                 .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .height(8.dp)
-                .clip(RoundedCornerShape(50))
+                .height(10.dp)
                 .background(MaterialTheme.colorScheme.primary)
         )
     }

@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -136,9 +137,8 @@ fun StatusChip(book: Book) {
     val color = MaterialTheme.colorScheme.secondaryContainer
     Box(
         Modifier
-            .clip(RoundedCornerShape(50))
             .background(color)
-            .padding(horizontal = 10.dp, vertical = 3.dp)
+            .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
         Text(book.status.label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
     }
@@ -146,7 +146,7 @@ fun StatusChip(book: Book) {
 
 @Composable
 fun BookCover(book: Book, width: Int, height: Int) {
-    val shape = RoundedCornerShape(6.dp)
+    val shape = RectangleShape
     if (book.coverPath != null) {
         AsyncImage(
             model = File(book.coverPath),

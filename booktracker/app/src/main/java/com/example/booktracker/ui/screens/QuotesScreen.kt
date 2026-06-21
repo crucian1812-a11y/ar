@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -84,7 +85,7 @@ fun QuoteCard(
                 AsyncImage(
                     model = File(quote.photoPath),
                     contentDescription = null,
-                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(6.dp))
+                    modifier = Modifier.size(56.dp).clip(RectangleShape)
                 )
                 Spacer(Modifier.width(12.dp))
             }
