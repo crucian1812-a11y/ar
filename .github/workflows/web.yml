@@ -1,0 +1,68 @@
+name: Deploy Vityazi 3D Web
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "vityazi3d/**"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: "4.3"
+  GODOT_REL: "4.3-stable"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Godot headless + export templates
+        run: |
+          set -e
+          BASE="https://github.com/godotengine/godot/releases/download/${GODOT_REL}"
+          wget -q "${BASE}/Godot_v${GODOT_REL}_linux.x86_64.zip" -O godot.zip
+          wget -q "${BASE}/Godot_v${GODOT_REL}_export_templates.tpz" -O templates.tpz
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_REL}_linux.x86_64" /usr/local/bin/godot
+          chmod +x /usr/local/bin/godot
+          mkdir -p templates_tmp
+          unzip -q templates.tpz -d templates_tmp
+          TPL_DIR="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$TPL_DIR"
+          mv templates_tmp/templates/* "$TPL_DIR"/
+
+      - name: Export Web build
+        working-directory: vityazi3d
+        run: |
+          godot --headless --import || true
+          mkdir -p web_build
+          godot --headless --export-release "Web" web_build/index.html
+          ls -la web_build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: vityazi3d/web_build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -43,6 +43,21 @@ func _ready() -> void:
 	state = "menu"
 	controls.state = 0
 
+	if "--selftest" in OS.get_cmdline_user_args():
+		_run_selftest()
+
+func _run_selftest() -> void:
+	# Headless CI smoke test: start a game, wait, report spawn state, exit.
+	start_game(0)
+	var n0 := get_tree().get_nodes_in_group("enemy").size()
+	await get_tree().create_timer(1.5).timeout
+	var n1 := get_tree().get_nodes_in_group("enemy").size()
+	var fe = get_tree().get_first_node_in_group("enemy")
+	var fpos := str(fe.global_position) if fe else "none"
+	print("SELFTEST enemies_after_spawn=%d enemies_after_1.5s=%d alive=%d first=%s player=%s" % [
+		n0, n1, alive, fpos, str(player.global_position)])
+	get_tree().quit(0 if n1 > 0 else 1)
+
 func terrain_height(x: float, z: float) -> float:
 	var d := Vector2(x, z).length()
 	var t := clampf((d - PLAZA) / 45.0, 0.0, 1.0)

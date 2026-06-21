@@ -74,6 +74,15 @@ jobs:
         working-directory: vityazi3d
         run: godot --headless --import || true
 
+      - name: Self-test (headless logic smoke test)
+        working-directory: vityazi3d
+        continue-on-error: true
+        run: |
+          echo "Running headless self-test..."
+          godot --headless -- --selftest 2>&1 | tee selftest.log || true
+          echo "----- self-test result -----"
+          grep "SELFTEST" selftest.log || echo "NO SELFTEST OUTPUT"
+
       - name: Export debug APK
         working-directory: vityazi3d
         env:
