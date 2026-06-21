@@ -1,0 +1,42 @@
+name: Build Vityazi APK
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "vityazi/**"
+      - ".github/workflows/game.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vityazi
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vityazi-debug-apk
+          path: vityazi/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

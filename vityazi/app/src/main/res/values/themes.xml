@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.Vityazi" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentTransitions">false</item>
+    </style>
+</resources>
