@@ -17,6 +17,8 @@ var kills := 0
 var wave := 1
 var alive := 0
 var boss_present := false
+var dbg_ecount := 0
+var dbg_e0 := ""
 
 const JOY_R := 120.0
 var joy_finger := -1
@@ -170,6 +172,8 @@ func _draw_play() -> void:
 		draw_string(font, Vector2(v.x - 24, by + 19), info, HORIZONTAL_ALIGNMENT_RIGHT, -1, 18, Color.WHITE)
 		if boss_present:
 			draw_string(font, Vector2(v.x * 0.5, by + 60), "⚔ ВОЕВОДА ⚔", HORIZONTAL_ALIGNMENT_CENTER, -1, 24, Color(0.9, 0.3, 0.3))
+		var dbg := "врагов в сцене: %d   alive:%d   первый: %s" % [dbg_ecount, alive, dbg_e0]
+		draw_string(font, Vector2(v.x * 0.5, by + 90), dbg, HORIZONTAL_ALIGNMENT_CENTER, -1, 20, Color(1, 1, 0.4))
 
 func _draw_menu() -> void:
 	var v := _vp()

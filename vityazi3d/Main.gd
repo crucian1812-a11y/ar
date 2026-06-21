@@ -373,6 +373,9 @@ func _process(delta: float) -> void:
 		controls.wave = wave
 		controls.alive = alive
 		controls.boss_present = boss_spawned and not boss_defeated
+		controls.dbg_ecount = get_tree().get_nodes_in_group("enemy").size()
+		var fe = get_tree().get_first_node_in_group("enemy")
+		controls.dbg_e0 = str(fe.global_position.round()) if fe else "none"
 
 	match state:
 		"menu":
