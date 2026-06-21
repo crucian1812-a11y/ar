@@ -24,6 +24,7 @@ func _ready() -> void:
 
 	_build_environment()
 	_build_terrain()
+	_build_floor()
 	_build_water()
 	_scatter_trees(150)
 	_build_town()
@@ -102,7 +103,15 @@ func _build_terrain() -> void:
 	mi.mesh = mesh
 	mi.name = "Terrain"
 	add_child(mi)
-	mi.create_trimesh_collision()
+
+# Guaranteed flat, solid ground at y=0 (an infinite plane) so the player and
+# enemies always have reliable footing on the central plaza.
+func _build_floor() -> void:
+	var body := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	cs.shape = WorldBoundaryShape3D.new()
+	body.add_child(cs)
+	add_child(body)
 
 func _add_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 	var n := (b - a).cross(c - a)
@@ -281,6 +290,8 @@ func _process(delta: float) -> void:
 		controls.alive = alive
 		controls.dbg_speed = Vector2(player.velocity.x, player.velocity.z).length()
 		controls.dbg_floor = player.is_on_floor()
+		controls.dbg_y = player.global_position.y
+		controls.dbg_vy = player.velocity.y
 
 # ---------------- ui ----------------
 
