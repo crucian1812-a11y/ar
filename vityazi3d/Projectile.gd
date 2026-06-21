@@ -6,6 +6,7 @@ var dmg := 7.0
 var life := 4.0
 
 func _ready() -> void:
+	add_to_group("proj")
 	var mi := MeshInstance3D.new()
 	var m := BoxMesh.new()
 	m.size = Vector3(0.08, 0.08, 0.7)
