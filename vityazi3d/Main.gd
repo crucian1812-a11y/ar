@@ -277,6 +277,8 @@ func _process(delta: float) -> void:
 		controls.kills = kills
 		controls.wave = wave
 		controls.alive = alive
+		controls.dbg_speed = Vector2(player.velocity.x, player.velocity.z).length()
+		controls.dbg_floor = player.is_on_floor()
 
 # ---------------- ui ----------------
 
