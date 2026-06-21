@@ -20,6 +20,9 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_process(true)
 
+func _vp() -> Vector2:
+	return get_viewport_rect().size
+
 func _process(_delta: float) -> void:
 	queue_redraw()
 
@@ -33,15 +36,18 @@ func consume_look() -> float:
 	var l := look_dx; look_dx = 0.0; return l
 
 func _attack_center() -> Vector2:
-	return Vector2(size.x - 110.0, size.y - 120.0)
+	var v := _vp()
+	return Vector2(v.x - 110.0, v.y - 120.0)
 
 func _jump_center() -> Vector2:
-	return Vector2(size.x - 240.0, size.y - 95.0)
+	var v := _vp()
+	return Vector2(v.x - 240.0, v.y - 95.0)
 
-func _attack_r() -> float: return 78.0
-func _jump_r() -> float: return 56.0
+func _attack_r() -> float: return 80.0
+func _jump_r() -> float: return 58.0
 
 func _input(event: InputEvent) -> void:
+	var v := _vp()
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			var p: Vector2 = event.position
@@ -49,7 +55,7 @@ func _input(event: InputEvent) -> void:
 				_attack = true; return
 			if p.distance_to(_jump_center()) <= _jump_r():
 				_jump = true; return
-			if p.x < size.x * 0.5 and joy_finger == -1:
+			if p.x < v.x * 0.5 and joy_finger == -1:
 				joy_finger = event.index
 				joy_origin = p
 				move_vec = Vector2.ZERO
@@ -72,9 +78,10 @@ func _input(event: InputEvent) -> void:
 			look_dx += event.relative.x
 
 func _draw() -> void:
+	var v := _vp()
 	var font := ThemeDB.fallback_font
 	# joystick
-	var base := joy_origin if joy_finger != -1 else Vector2(170, size.y - 150)
+	var base := joy_origin if joy_finger != -1 else Vector2(170, v.y - 150)
 	draw_circle(base, JOY_R, Color(1, 1, 1, 0.10))
 	draw_arc(base, JOY_R, 0, TAU, 48, Color(1, 1, 1, 0.35), 3.0, true)
 	var knob := base + move_vec * Vector2(JOY_R, -JOY_R)
@@ -101,4 +108,4 @@ func _draw() -> void:
 	if font:
 		draw_string(font, Vector2(bx + 8, by + 19), "ВИТЯЗЬ", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
 		var info := "Волна %d   Враги: %d   Повержено: %d" % [wave, alive, kills]
-		draw_string(font, Vector2(size.x - 24, by + 19), info, HORIZONTAL_ALIGNMENT_RIGHT, -1, 18, Color.WHITE)
+		draw_string(font, Vector2(v.x - 24, by + 19), info, HORIZONTAL_ALIGNMENT_RIGHT, -1, 18, Color.WHITE)

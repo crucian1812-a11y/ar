@@ -8,6 +8,10 @@ run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.3")
 config/icon="res://icon.svg"
 
+[autoload]
+
+Sfx="*res://Sound.gd"
+
 [display]
 
 window/size/viewport_width=1280

@@ -104,10 +104,12 @@ func _physics_process(delta: float) -> void:
 
 	if controls and controls.consume_jump() and is_on_floor():
 		velocity.y = JUMP
+		Sfx.jump()
 
 	if controls and controls.consume_attack() and attack_cd <= 0.0:
 		attack_cd = 0.5
 		attack_t = 0.3
+		Sfx.swing()
 		_do_attack()
 
 	move_and_slide()
@@ -128,12 +130,14 @@ func _do_attack() -> void:
 		var to = e.global_position - global_position
 		if to.length() < 2.6 and fwd.dot(to.normalized()) > 0.2:
 			e.take_damage(40.0)
+			Sfx.hit()
 
 func take_damage(d: float) -> void:
 	if hurt_t > 0.0:
 		return
 	hp -= d
 	hurt_t = 0.6
+	Sfx.hurt()
 	if hp <= 0.0:
 		hp = max_hp
 		global_position = Vector3(0, (main.terrain_height(0, 8) if main else 0.0) + 2.0, 8)

@@ -84,6 +84,7 @@ func take_damage(d: float) -> void:
 		var away := (global_position - player.global_position).normalized()
 		velocity += away * 4.0
 	if hp <= 0.0:
+		Sfx.enemy_die()
 		if main:
 			main.on_enemy_killed()
 		queue_free()
