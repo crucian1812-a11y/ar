@@ -21,12 +21,15 @@ var hurt_t := 0.0
 
 func _ready() -> void:
 	add_to_group("player")
+	up_direction = Vector3.UP
+	floor_snap_length = 0.6
+	floor_max_angle = deg_to_rad(60.0)
 	var col := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.4
-	cap.height = 1.7
+	cap.height = 1.8
 	col.shape = cap
-	col.position = Vector3(0, 1.0, 0)
+	col.position = Vector3(0, 0.9, 0)  # capsule bottom sits exactly at the feet
 	add_child(col)
 
 	body = Node3D.new()
@@ -83,28 +86,32 @@ func _physics_process(delta: float) -> void:
 	if controls:
 		cam_yaw -= controls.consume_look() * 0.005
 
-	# gravity
-	if not is_on_floor():
-		velocity.y -= GRAVITY * delta
-
+	# horizontal movement (camera-relative)
 	var stick: Vector2 = controls.move_vec if controls else Vector2.ZERO
 	var fwd := Vector3(-sin(cam_yaw), 0, -cos(cam_yaw))
 	var right := Vector3(cos(cam_yaw), 0, -sin(cam_yaw))
 	var dir := fwd * stick.y + right * stick.x
 
-	if dir.length() > 0.1:
+	if dir.length() > 0.15:
 		dir = dir.normalized()
 		velocity.x = dir.x * SPEED
 		velocity.z = dir.z * SPEED
 		var target_yaw := atan2(dir.x, dir.z)
-		body.rotation.y = lerp_angle(body.rotation.y, target_yaw, 0.2)
+		body.rotation.y = lerp_angle(body.rotation.y, target_yaw, 0.25)
 	else:
-		velocity.x = move_toward(velocity.x, 0, SPEED * 2.0 * delta * 10.0)
-		velocity.z = move_toward(velocity.z, 0, SPEED * 2.0 * delta * 10.0)
+		velocity.x = move_toward(velocity.x, 0.0, SPEED * 8.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, SPEED * 8.0 * delta)
 
-	if controls and controls.consume_jump() and is_on_floor():
-		velocity.y = JUMP
-		Sfx.jump()
+	# vertical: ground sticking + jump + clamped gravity
+	var want_jump: bool = controls != null and controls.consume_jump()
+	if is_on_floor():
+		if want_jump:
+			velocity.y = JUMP
+			Sfx.jump()
+		else:
+			velocity.y = -2.0
+	else:
+		velocity.y = maxf(velocity.y - GRAVITY * delta, -40.0)
 
 	if controls and controls.consume_attack() and attack_cd <= 0.0:
 		attack_cd = 0.5

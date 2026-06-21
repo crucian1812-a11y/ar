@@ -11,12 +11,15 @@ var mats: Array[StandardMaterial3D] = []
 
 func _ready() -> void:
 	add_to_group("enemy")
+	up_direction = Vector3.UP
+	floor_snap_length = 0.6
+	floor_max_angle = deg_to_rad(60.0)
 	var col := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.4
-	cap.height = 1.7
+	cap.height = 1.8
 	col.shape = cap
-	col.position = Vector3(0, 1.0, 0)
+	col.position = Vector3(0, 0.9, 0)
 	add_child(col)
 	body = Node3D.new()
 	add_child(body)
@@ -53,8 +56,10 @@ func _physics_process(delta: float) -> void:
 		if hurt_t <= 0.0:
 			_set_tint(false)
 
-	if not is_on_floor():
-		velocity.y -= GRAVITY * delta
+	if is_on_floor():
+		velocity.y = -2.0
+	else:
+		velocity.y = maxf(velocity.y - GRAVITY * delta, -40.0)
 
 	var player = get_tree().get_first_node_in_group("player")
 	if player:

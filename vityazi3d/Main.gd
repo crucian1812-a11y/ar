@@ -3,8 +3,9 @@ extends Node3D
 # ---- world parameters ----
 const WORLD := 170.0          # half-extent of the terrain (meters)
 const CELLS := 70             # grid resolution
-const AMP := 9.0              # hill height
-const WATER_Y := -2.2
+const AMP := 7.0              # hill height
+const WATER_Y := -3.0
+const PLAZA := 42.0           # radius of the flat central plaza
 
 var noise := FastNoiseLite.new()
 var controls
@@ -17,8 +18,8 @@ var alive := 0
 func _ready() -> void:
 	randomize()
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	noise.frequency = 0.012
-	noise.fractal_octaves = 4
+	noise.frequency = 0.009
+	noise.fractal_octaves = 3
 	noise.seed = randi()
 
 	_build_environment()
@@ -33,10 +34,11 @@ func _ready() -> void:
 	_spawn_wave()
 
 func terrain_height(x: float, z: float) -> float:
-	# central clearing is flatter so the town / fights sit on gentler ground
+	# Perfectly flat plaza in the centre, smoothly blending into gentle hills.
 	var d := Vector2(x, z).length()
-	var flat := clampf(1.0 - exp(-pow(d / 45.0, 2.0)), 0.25, 1.0)
-	return noise.get_noise_2d(x, z) * AMP * flat
+	var t := clampf((d - PLAZA) / 45.0, 0.0, 1.0)
+	t = t * t
+	return noise.get_noise_2d(x, z) * AMP * t
 
 # ---------------- environment ----------------
 
