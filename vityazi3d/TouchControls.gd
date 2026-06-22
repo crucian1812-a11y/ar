@@ -28,7 +28,7 @@ var look_finger := -1
 var CHARS := [
 	["САША", "меч", Color(0.62, 0.20, 0.18)],
 	["ГЛЕБ", "секира", Color(0.30, 0.45, 0.30)],
-	["ФЕДЯ", "копьё", Color(0.28, 0.36, 0.52)],
+	["ФЕДЯ", "кинжалы", Color(0.28, 0.36, 0.52)],
 ]
 
 func _ready() -> void:
@@ -172,8 +172,6 @@ func _draw_play() -> void:
 		draw_string(font, Vector2(v.x - 24, by + 19), info, HORIZONTAL_ALIGNMENT_RIGHT, -1, 18, Color.WHITE)
 		if boss_present:
 			draw_string(font, Vector2(v.x * 0.5, by + 60), "⚔ ВОЕВОДА ⚔", HORIZONTAL_ALIGNMENT_CENTER, -1, 24, Color(0.9, 0.3, 0.3))
-		var dbg := "врагов в сцене: %d   alive:%d   первый: %s" % [dbg_ecount, alive, dbg_e0]
-		draw_string(font, Vector2(v.x * 0.5, by + 90), dbg, HORIZONTAL_ALIGNMENT_CENTER, -1, 20, Color(1, 1, 0.4))
 
 func _draw_menu() -> void:
 	var v := _vp()
