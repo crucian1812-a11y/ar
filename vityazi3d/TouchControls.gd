@@ -22,6 +22,13 @@ var can_interact := false
 var shop_names: Array = []
 var toast := ""
 var toast_t := 0.0
+# inventory
+var inv_weapons: Array = []
+var inv_equipped := 0
+var inv_stats := ""
+var _inventory := false
+var _equip := -1
+var _dodge := false
 
 const JOY_R := 120.0
 var joy_finger := -1
@@ -64,6 +71,23 @@ func consume_buy() -> int:
 	var b := _buy; _buy = -1; return b
 func consume_close() -> bool:
 	var c := _close; _close = false; return c
+func consume_inventory() -> bool:
+	var i := _inventory; _inventory = false; return i
+func consume_equip() -> int:
+	var e := _equip; _equip = -1; return e
+func consume_dodge() -> bool:
+	var d := _dodge; _dodge = false; return d
+
+func _dodge_btn() -> Vector2:
+	var v := _vp(); return Vector2(v.x - 150.0, v.y - 232.0)
+func _dodge_r() -> float: return 50.0
+func _inv_btn() -> Vector2:
+	var v := _vp(); return Vector2(v.x - 48.0, 132.0)
+func _inv_r() -> float: return 38.0
+func _inv_row(i: int) -> Rect2:
+	var p := _shop_panel()
+	var rh := 56.0
+	return Rect2(p.position.x + 20.0, p.position.y + 120.0 + i * (rh + 10.0), p.size.x - 40.0, rh)
 
 # ---- geometry ----
 func _attack_center() -> Vector2:
@@ -110,9 +134,21 @@ func _input(event: InputEvent) -> void:
 	elif state == 4:
 		if _pressed(event):
 			_shop_tap(_press_pos(event))
+	elif state == 5:
+		if _pressed(event):
+			_inv_tap(_press_pos(event))
 	else:
 		if _pressed(event):
 			restart = true
+
+func _inv_tap(p: Vector2) -> void:
+	if _shop_close().has_point(p):
+		_close = true
+		return
+	for i in range(inv_weapons.size()):
+		if _inv_row(i).has_point(p):
+			_equip = i
+			return
 
 func _pressed(e: InputEvent) -> bool:
 	return (e is InputEventScreenTouch and e.pressed) or \
@@ -151,12 +187,16 @@ func _play_input(event: InputEvent) -> void:
 			_drag(-2, event.position, event.relative)
 
 func _press(p: Vector2, id: int) -> void:
+	if p.distance_to(_inv_btn()) <= _inv_r():
+		_inventory = true; return
 	if can_interact and p.distance_to(_interact_btn()) <= _interact_r():
 		_interact = true; return
 	if p.distance_to(_attack_center()) <= _attack_r():
 		_attack = true; return
 	if p.distance_to(_jump_center()) <= _jump_r():
 		_jump = true; return
+	if p.distance_to(_dodge_btn()) <= _dodge_r():
+		_dodge = true; return
 	if p.x < _vp().x * 0.5 and joy_finger == -1:
 		joy_finger = id; joy_origin = p; move_vec = Vector2.ZERO
 	elif look_finger == -1:
@@ -184,6 +224,7 @@ func _draw() -> void:
 		1: _draw_play()
 		0: _draw_menu()
 		4: _draw_play(); _draw_shop()
+		5: _draw_play(); _draw_inv()
 		2: _draw_end("НОВГОРОД ПАЛ", Color(0.85, 0.3, 0.25))
 		3: _draw_end("ПОБЕДА!", Color(0.85, 0.7, 0.3))
 
@@ -204,6 +245,17 @@ func _draw_play() -> void:
 		draw_circle(jc, _jump_r(), Color(0.15, 0.19, 0.24, 0.55))
 		draw_arc(jc, _jump_r(), 0, TAU, 40, Color(1, 1, 1, 0.6), 3.0, true)
 		draw_colored_polygon(PackedVector2Array([jc + Vector2(0, -20), jc + Vector2(-18, 12), jc + Vector2(18, 12)]), Color.WHITE)
+		# dodge button
+		var dc := _dodge_btn()
+		draw_circle(dc, _dodge_r(), Color(0.2, 0.3, 0.4, 0.55))
+		draw_arc(dc, _dodge_r(), 0, TAU, 36, Color(0.7, 0.85, 1.0, 0.9), 3.0, true)
+		draw_arc(dc, _dodge_r() * 0.55, 0.6, 0.6 + TAU * 0.75, 24, Color.WHITE, 4.0, true)
+		# inventory button
+		var iv := _inv_btn()
+		draw_circle(iv, _inv_r(), Color(0.15, 0.15, 0.2, 0.7))
+		draw_arc(iv, _inv_r(), 0, TAU, 32, Color(0.9, 0.85, 0.4, 0.9), 3.0, true)
+		for ly in [-7.0, 0.0, 7.0]:
+			draw_line(iv + Vector2(-14, ly), iv + Vector2(14, ly), Color.WHITE, 3.0)
 		if can_interact:
 			var ic := _interact_btn()
 			draw_circle(ic, _interact_r(), Color(0.2, 0.45, 0.25, 0.7))
@@ -244,6 +296,30 @@ func _draw_shop() -> void:
 		draw_rect(r, Color(0.5, 0.45, 0.35), false, 1.5)
 		if font:
 			draw_string(font, r.position + Vector2(14, 36), str(shop_names[i]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
+
+func _draw_inv() -> void:
+	var v := _vp()
+	var font := ThemeDB.fallback_font
+	draw_rect(Rect2(0, 0, v.x, v.y), Color(0, 0, 0, 0.55))
+	var p := _shop_panel()
+	draw_rect(p, Color(0.10, 0.11, 0.13, 0.97))
+	draw_rect(p, Color(0.85, 0.7, 0.3, 0.9), false, 3.0)
+	if font:
+		draw_string(font, Vector2(p.position.x + 20, p.position.y + 42), "СНАРЯЖЕНИЕ", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(0.95, 0.85, 0.4))
+		draw_string(font, Vector2(p.position.x + 20, p.position.y + 78), inv_stats, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
+		draw_string(font, Vector2(p.position.x + 20, p.position.y + 112), "Оружие (нажми, чтобы взять):", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.8, 0.8, 0.8))
+	var cl := _shop_close()
+	draw_rect(cl, Color(0.4, 0.15, 0.13))
+	if font:
+		draw_string(font, cl.position + Vector2(14, 31), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
+	for i in range(inv_weapons.size()):
+		var r := _inv_row(i)
+		var equipped := i == inv_equipped
+		draw_rect(r, Color(0.22, 0.28, 0.20) if equipped else Color(0.2, 0.19, 0.17))
+		draw_rect(r, Color(0.5, 0.8, 0.4) if equipped else Color(0.5, 0.45, 0.35), false, 2.0)
+		if font:
+			var tag := "  ✓ надето" if equipped else ""
+			draw_string(font, r.position + Vector2(14, 36), str(inv_weapons[i]) + tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
 
 func _draw_menu() -> void:
 	var v := _vp()

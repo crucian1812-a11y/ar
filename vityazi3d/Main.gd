@@ -1,10 +1,10 @@
 extends Node3D
 
-const WORLD := 170.0
-const CELLS := 70
-const AMP := 8.0
+const WORLD := 220.0
+const CELLS := 84
+const AMP := 9.0
 const WATER_Y := -3.0
-const PLAZA := 95.0
+const PLAZA := 120.0
 
 var noise := FastNoiseLite.new()
 var controls
@@ -42,7 +42,7 @@ func _ready() -> void:
 	_build_terrain()
 	_build_floor()
 	_build_water()
-	_scatter_trees(160)
+	_scatter_trees(260)
 	_build_town()
 	_build_villages()
 	_spawn_player()
@@ -182,7 +182,7 @@ func _scatter_trees(count: int) -> void:
 		var x := randf_range(-WORLD + 8, WORLD - 8)
 		var z := randf_range(-WORLD + 8, WORLD - 8)
 		var d := Vector2(x, z).length()
-		if d < 30.0 or d > 150.0:
+		if d < 30.0 or d > 205.0:
 			continue
 		_make_tree(Vector3(x, terrain_height(x, z), z))
 
@@ -223,10 +223,14 @@ func _build_town() -> void:
 	_make_npc(Vector3(8, 0, 4))      # town merchant
 
 func _build_villages() -> void:
-	for center in [Vector3(-68, 0, -26), Vector3(64, 0, 42)]:
-		for off in [Vector3(-6, 0, -5), Vector3(7, 0, -4), Vector3(-5, 0, 7), Vector3(8, 0, 8)]:
+	for center in [Vector3(-78, 0, -34), Vector3(80, 0, 50), Vector3(-90, 0, 60), Vector3(95, 0, -40)]:
+		for off in [Vector3(-6, 0, -5), Vector3(7, 0, -4), Vector3(-5, 0, 7), Vector3(8, 0, 8), Vector3(0, 0, -9)]:
 			_izba(center + off)
 		_make_npc(center)
+	# a couple of lone landmarks for exploration
+	_tower(Vector3(0, 0, 110))
+	_tower(Vector3(-110, 0, 0))
+	_church(Vector3(115, 0, 95))
 
 func _make_npc(pos: Vector3) -> void:
 	var npc := GameNpc.new()
@@ -357,11 +361,12 @@ func _clear_actors() -> void:
 	alive = 0
 
 func _spawn_world_enemies() -> void:
-	var camps := [Vector3(70, 0, 18), Vector3(-58, 0, 55), Vector3(22, 0, -78),
-		Vector3(-74, 0, -42), Vector3(72, 0, -52)]
+	var camps := [Vector3(75, 0, 18), Vector3(-58, 0, 60), Vector3(22, 0, -85),
+		Vector3(-80, 0, -55), Vector3(95, 0, -75), Vector3(-40, 0, 95),
+		Vector3(60, 0, 95), Vector3(-105, 0, 25)]
 	for c in camps:
 		_spawn_camp(c, false)
-	_spawn_camp(Vector3(0, 0, -88), true)   # boss camp
+	_spawn_camp(Vector3(0, 0, -110), true)   # boss camp
 
 func _spawn_camp(center: Vector3, boss: bool) -> void:
 	var n := randi_range(3, 5)
@@ -395,17 +400,18 @@ func _gold_for(kind: int) -> int:
 		_: return 8
 
 func _spawn_pickups() -> void:
-	for i in range(11):
-		_make_pickup("gold", randf_range(12, 32), _rand_spot())
-	_make_pickup("weapon", 12.0, _rand_spot())
-	_make_pickup("weapon", 22.0, _rand_spot())
-	_make_pickup("armor", 0.10, _rand_spot())
-	_make_pickup("armor", 0.14, _rand_spot())
-	_make_pickup("heal", 40.0, _rand_spot())
+	for i in range(20):
+		_make_pickup("gold", randf_range(12, 35), _rand_spot())
+	for i in range(3):
+		_make_pickup("weapon", randf_range(10, 24), _rand_spot())
+	for i in range(3):
+		_make_pickup("armor", randf_range(0.08, 0.14), _rand_spot())
+	for i in range(2):
+		_make_pickup("heal", 40.0, _rand_spot())
 
 func _rand_spot() -> Vector3:
 	var a := randf() * TAU
-	var d := randf_range(22.0, 88.0)
+	var d := randf_range(22.0, 115.0)
 	return Vector3(cos(a) * d, 1.0, sin(a) * d)
 
 func _make_pickup(kind: String, value: float, pos: Vector3) -> void:
@@ -470,6 +476,16 @@ func _process(delta: float) -> void:
 				return
 			if controls.consume_interact() and near_npc != null:
 				_open_shop()
+			if controls.consume_inventory():
+				_open_inventory()
+		"inv":
+			var ei: int = controls.consume_equip()
+			if ei >= 0:
+				player.equip(ei)
+				_refresh_inv()
+			if controls.consume_close():
+				state = "play"
+				controls.state = 1
 		"shop":
 			var bi: int = controls.consume_buy()
 			if bi >= 0:
@@ -490,6 +506,17 @@ func _update_interaction() -> void:
 			best = d
 			near_npc = n
 	controls.can_interact = near_npc != null
+
+func _open_inventory() -> void:
+	_refresh_inv()
+	state = "inv"
+	controls.state = 5
+
+func _refresh_inv() -> void:
+	controls.inv_weapons = player.weapon_names()
+	controls.inv_equipped = player.weapon_idx
+	controls.inv_stats = "Урон: %d    Броня: %d%%    HP: %d/%d    Золото: %d" % [
+		player.total_dmg(), int(player.armor * 100), int(player.hp), int(player.max_hp), player.gold]
 
 func _open_shop() -> void:
 	var names := []

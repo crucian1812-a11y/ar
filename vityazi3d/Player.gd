@@ -15,22 +15,34 @@ var char_id := 0
 var atk_dmg := 42.0
 var atk_reach := 2.8
 var atk_cd_time := 0.6
+var attack_anim := "1H_Melee_Attack_Slice_Diagonal"
 
 # RPG stats
 var gold := 40
-var armor := 0.0        # damage reduction 0..0.7
-var dmg_bonus := 0.0    # added to atk_dmg from gear/artifacts
+var armor := 0.0
+var dmg_bonus := 0.0
+
+# weapons / equipment
+var weapons: Array = []
+var weapon_idx := 0
+
+# dodge
+const DODGE_SPEED := 16.0
+const DODGE_TIME := 0.32
+const DODGE_CD := 0.8
+var dodge_t := 0.0
+var dodge_cd := 0.0
+var dodge_dir := Vector3.FORWARD
 
 var cam_yaw := 0.0
 var cam_pitch := 0.5
 var cam: Camera3D
 var model: Node3D
+var skel: Skeleton3D
 var anim: AnimationPlayer
 var idle_anim := "Idle"
 var run_anim := "Running_A"
-var attack_anim := "1H_Melee_Attack_Slice_Diagonal"
 var cur_anim := ""
-
 var attack_cd := 0.0
 var anim_lock := 0.0
 var hurt_t := 0.0
@@ -50,46 +62,42 @@ func _ready() -> void:
 	col.shape = cap
 	col.position = Vector3(0, 0.9, 0)
 	add_child(col)
-
 	cam = Camera3D.new()
 	cam.fov = 70.0
 	add_child(cam)
 	cam.current = true
-
 	set_character(0)
+
+func _weapons_for(id: int) -> Array:
+	match id:
+		0: return [
+			{"name": "Меч и щит", "show": ["1H_Sword", "Round_Shield", "Knight_Helmet"], "anim": "1H_Melee_Attack_Slice_Diagonal", "dmg": 42.0, "reach": 2.7, "cd": 0.55},
+			{"name": "Двуручный меч", "show": ["2H_Sword", "Knight_Helmet"], "anim": "2H_Melee_Attack_Chop", "dmg": 72.0, "reach": 3.0, "cd": 0.82},
+		]
+		1: return [
+			{"name": "Топор и щит", "show": ["1H_Axe", "Barbarian_Round_Shield", "Barbarian_Hat"], "anim": "1H_Melee_Attack_Chop", "dmg": 50.0, "reach": 2.6, "cd": 0.6},
+			{"name": "Двуручная секира", "show": ["2H_Axe", "Barbarian_Hat"], "anim": "2H_Melee_Attack_Chop", "dmg": 84.0, "reach": 2.9, "cd": 0.88},
+		]
+		_: return [
+			{"name": "Парные кинжалы", "show": ["Knife", "Knife_Offhand", "Rogue_Cape"], "anim": "Dualwield_Melee_Attack_Slice", "dmg": 30.0, "reach": 2.3, "cd": 0.36},
+			{"name": "Клинок (выпад)", "show": ["Knife", "Rogue_Cape"], "anim": "1H_Melee_Attack_Stab", "dmg": 48.0, "reach": 2.9, "cd": 0.5},
+		]
+
+func _model_path(id: int) -> String:
+	match id:
+		0: return "res://assets/models/Knight.glb"
+		1: return "res://assets/models/Barbarian.glb"
+		_: return "res://assets/models/Rogue.glb"
 
 func set_character(id: int) -> void:
 	char_id = id
-	var path := ""
-	var show: Array = []
-	match id:
-		0:  # Саша — рыцарь с мечом и щитом
-			path = "res://assets/models/Knight.glb"
-			show = ["1H_Sword", "Round_Shield", "Knight_Helmet"]
-			attack_anim = "1H_Melee_Attack_Slice_Diagonal"
-			atk_dmg = 42; atk_reach = 2.7; atk_cd_time = 0.55
-		1:  # Глеб — богатырь с секирой
-			path = "res://assets/models/Barbarian.glb"
-			show = ["2H_Axe", "Barbarian_Hat"]
-			attack_anim = "2H_Melee_Attack_Chop"
-			atk_dmg = 64; atk_reach = 2.7; atk_cd_time = 0.7
-		2:  # Федя — ловкач с кинжалами
-			path = "res://assets/models/Rogue.glb"
-			show = ["Knife", "Knife_Offhand", "Rogue_Cape"]
-			attack_anim = "Dualwield_Melee_Attack_Slice"
-			atk_dmg = 30; atk_reach = 2.4; atk_cd_time = 0.38
-
+	weapons = _weapons_for(id)
 	if model != null:
 		model.queue_free()
-	model = load(path).instantiate()
+	model = load(_model_path(id)).instantiate()
 	add_child(model)
 	model.scale = Vector3.ONE * MODEL_SCALE
-
-	var sk := _find_class(model, "Skeleton3D")
-	if sk:
-		for c in sk.get_children():
-			if _is_equip(String(c.name)):
-				c.visible = String(c.name) in show
+	skel = _find_class(model, "Skeleton3D")
 	anim = _find_class(model, "AnimationPlayer")
 	if anim:
 		for a in [idle_anim, run_anim]:
@@ -97,6 +105,18 @@ func set_character(id: int) -> void:
 				anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
 		cur_anim = idle_anim
 		anim.play(idle_anim)
+	equip(0)
+
+func equip(i: int) -> void:
+	if i < 0 or i >= weapons.size():
+		return
+	weapon_idx = i
+	var w = weapons[i]
+	atk_dmg = w["dmg"]; atk_reach = w["reach"]; atk_cd_time = w["cd"]; attack_anim = w["anim"]
+	if skel:
+		for c in skel.get_children():
+			if _is_equip(String(c.name)):
+				c.visible = String(c.name) in w["show"]
 
 func _is_equip(n: String) -> bool:
 	for k in EQUIP_KEYS:
@@ -106,8 +126,10 @@ func _is_equip(n: String) -> bool:
 
 func _physics_process(delta: float) -> void:
 	attack_cd = maxf(0.0, attack_cd - delta)
+	dodge_cd = maxf(0.0, dodge_cd - delta)
 	if hurt_t > 0.0: hurt_t -= delta
 	if anim_lock > 0.0: anim_lock -= delta
+	if dodge_t > 0.0: dodge_t -= delta
 
 	if controls:
 		cam_yaw -= controls.consume_look() * 0.005
@@ -118,7 +140,10 @@ func _physics_process(delta: float) -> void:
 	var dir := fwd * stick.y + right * stick.x
 	var moving := false
 
-	if dir.length() > 0.15:
+	if dodge_t > 0.0:
+		velocity.x = dodge_dir.x * DODGE_SPEED
+		velocity.z = dodge_dir.z * DODGE_SPEED
+	elif dir.length() > 0.15:
 		dir = dir.normalized()
 		velocity.x = dir.x * SPEED
 		velocity.z = dir.z * SPEED
@@ -139,7 +164,21 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = maxf(velocity.y - GRAVITY * delta, -40.0)
 
-	if controls and controls.consume_attack() and attack_cd <= 0.0:
+	# dodge roll
+	if controls and controls.consume_dodge() and dodge_cd <= 0.0 and is_on_floor():
+		dodge_cd = DODGE_CD
+		dodge_t = DODGE_TIME
+		hurt_t = maxf(hurt_t, DODGE_TIME)   # i-frames
+		var dd := dir if dir.length() > 0.1 else Vector3(sin(model.rotation.y), 0, cos(model.rotation.y))
+		dodge_dir = dd.normalized()
+		if model:
+			model.rotation.y = atan2(dodge_dir.x, dodge_dir.z)
+		if anim and anim.has_animation("Dodge_Forward"):
+			anim.play("Dodge_Forward")
+			cur_anim = "Dodge_Forward"
+			anim_lock = DODGE_TIME
+
+	if controls and controls.consume_attack() and attack_cd <= 0.0 and dodge_t <= 0.0:
 		attack_cd = atk_cd_time
 		Sfx.swing()
 		_do_attack()
@@ -161,9 +200,7 @@ func _update_anim(moving: bool) -> void:
 		anim.play(want, 0.15)
 
 func _do_attack() -> void:
-	var f := -global_transform.basis.z
-	if model:
-		f = Vector3(sin(model.rotation.y), 0, cos(model.rotation.y))
+	var f := Vector3(sin(model.rotation.y), 0, cos(model.rotation.y)) if model else -global_transform.basis.z
 	for e in get_tree().get_nodes_in_group("enemy"):
 		var to = e.global_position - global_position
 		if to.length() < atk_reach and f.dot(to.normalized()) > 0.1:
@@ -179,22 +216,21 @@ func take_damage(d: float) -> void:
 	if hp < 0.0:
 		hp = 0.0
 
-# ---- RPG helpers (called by Main for shop / pickups) ----
-func add_gold(n: int) -> void:
-	gold += n
-func add_dmg(n: float) -> void:
-	dmg_bonus += n
-func add_armor(n: float) -> void:
-	armor = clampf(armor + n, 0.0, 0.7)
-func heal(n: float) -> void:
-	hp = minf(hp + n, max_hp)
-func add_maxhp(n: float) -> void:
-	max_hp += n
-	hp = max_hp
-
 func knockback(dir: Vector3, force: float) -> void:
 	velocity.x += dir.x * force
 	velocity.z += dir.z * force
+
+func add_gold(n: int) -> void: gold += n
+func add_dmg(n: float) -> void: dmg_bonus += n
+func add_armor(n: float) -> void: armor = clampf(armor + n, 0.0, 0.7)
+func heal(n: float) -> void: hp = minf(hp + n, max_hp)
+func add_maxhp(n: float) -> void: max_hp += n; hp = max_hp
+func total_dmg() -> int: return int(atk_dmg + dmg_bonus)
+func weapon_names() -> Array:
+	var a := []
+	for w in weapons:
+		a.append(w["name"])
+	return a
 
 func _update_camera() -> void:
 	var target := global_position + Vector3.UP * 1.6
