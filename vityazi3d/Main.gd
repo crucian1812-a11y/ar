@@ -10,6 +10,8 @@ var noise := FastNoiseLite.new()
 var controls
 var player
 
+var village_centers := [Vector3(-78, 0, -34), Vector3(80, 0, 50), Vector3(-90, 0, 60), Vector3(95, 0, -40)]
+
 var state := "menu"            # menu / play / shop / gameover / win
 var kills := 0
 var alive := 0
@@ -172,15 +174,41 @@ func _add_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 	if n.length() > 0.0:
 		slope = clampf(n.normalized().dot(Vector3.UP), 0.0, 1.0)
 	for v in [a, b, c]:
-		st.set_color(_ground_color(v.y, slope))
+		st.set_color(_ground_color(v, slope))
 		st.add_vertex(v)
 
-func _ground_color(h: float, slope: float) -> Color:
+func _ground_color(p: Vector3, slope: float) -> Color:
+	var h := p.y
+	var d := Vector2(p.x, p.z).length()
+	# sand by the water
 	if h < WATER_Y + 1.2:
-		return Color(0.72, 0.66, 0.45)
-	if slope < 0.78:
-		return Color(0.42, 0.40, 0.37)
-	return Color(0.36, 0.49, 0.28).lerp(Color(0.30, 0.43, 0.24), fmod(absf(h) * 0.7, 1.0))
+		return Color(0.74, 0.68, 0.48).lerp(Color(0.66, 0.60, 0.42), _checker(p, 1.3))
+	# town square — cobblestone paving with checkered mortar
+	if d < 40.0:
+		var stone := Color(0.50, 0.50, 0.53).lerp(Color(0.40, 0.40, 0.44), _checker(p, 1.1))
+		# main roads radiating from the kremlin stay lighter
+		return stone.lerp(Color(0.58, 0.57, 0.55), 0.25 * _checker(p, 0.55))
+	# dirt courtyards around the villages
+	for vc in village_centers:
+		var vd := Vector2(p.x - vc.x, p.z - vc.z).length()
+		if vd < 16.0:
+			var f := clampf(vd / 16.0, 0.0, 1.0)
+			var dirt := Color(0.46, 0.37, 0.26).lerp(Color(0.40, 0.32, 0.22), _checker(p, 1.7))
+			return dirt.lerp(_grass(p), f * f)
+	# steep slopes show bare earth/rock
+	if slope < 0.74:
+		return Color(0.44, 0.40, 0.35).lerp(Color(0.36, 0.32, 0.28), _checker(p, 0.9))
+	return _grass(p)
+
+func _grass(p: Vector3) -> Color:
+	var n := (noise.get_noise_2d(p.x * 2.3, p.z * 2.3) + 1.0) * 0.5
+	var n2 := (noise.get_noise_2d(p.x * 9.0 + 50.0, p.z * 9.0) + 1.0) * 0.5
+	var base := Color(0.27, 0.44, 0.22).lerp(Color(0.40, 0.56, 0.28), n)
+	return base.lerp(Color(0.34, 0.50, 0.24), n2 * 0.4)
+
+func _checker(p: Vector3, scale: float) -> float:
+	var s := sin(p.x * scale) * sin(p.z * scale)
+	return clampf(s * 0.5 + 0.5, 0.0, 1.0)
 
 func _build_water() -> void:
 	var pm := PlaneMesh.new()
@@ -245,10 +273,14 @@ func _build_town() -> void:
 
 func _build_villages() -> void:
 	var vi := 0
-	for center in [Vector3(-78, 0, -34), Vector3(80, 0, 50), Vector3(-90, 0, 60), Vector3(95, 0, -40)]:
-		for off in [Vector3(-6, 0, -5), Vector3(7, 0, -4), Vector3(-5, 0, 7), Vector3(8, 0, 8), Vector3(0, 0, -9)]:
-			_izba(center + off)
-		_make_npc(center)
+	for center in village_centers:
+		var oi := 0
+		for off in [Vector3(-7, 0, -6), Vector3(8, 0, -5), Vector3(-6, 0, 8), Vector3(9, 0, 9), Vector3(0, 0, -11)]:
+			_izba(center + off, oi == 0)   # one barn-style house per village
+			oi += 1
+		# a village well in the middle
+		_well(center)
+		_make_npc(center + Vector3(2, 0, 2))
 		# every other village also has a quest-giver
 		if vi % 2 == 1:
 			_make_npc(center + Vector3(3, 0, 3), "quest")
@@ -293,27 +325,76 @@ func _wall(pos: Vector3, yaw: float) -> void:
 		root.add_child(mer)
 	_solid(root, Vector3(12.0, 5.0, 1.3), Vector3(0, 2.5, 0))
 
+# a wall slab that is both visible and solid
+func _wall_seg(root: Node3D, size: Vector3, center: Vector3, col: Color) -> void:
+	var w := MeshInstance3D.new()
+	var bm := BoxMesh.new(); bm.size = size
+	w.mesh = bm; w.material_override = _flat(col); w.position = center
+	root.add_child(w)
+	_solid(root, size, center)
+
+# dark glass pane (visual only, slightly proud of the wall)
+func _window(root: Node3D, size: Vector3, center: Vector3) -> void:
+	var win := MeshInstance3D.new()
+	var wb := BoxMesh.new(); wb.size = size
+	win.mesh = wb
+	var m := _flat(Color(0.14, 0.16, 0.24)); m.roughness = 0.12; m.metallic = 0.2
+	m.emission_enabled = true; m.emission = Color(0.20, 0.18, 0.10); m.emission_energy_multiplier = 0.25
+	win.material_override = m; win.position = center
+	root.add_child(win)
+	# wooden frame, slightly larger and set just behind the pane
+	var fr := MeshInstance3D.new()
+	var fb := BoxMesh.new()
+	fb.size = Vector3(size.x * 0.9, size.y + 0.22, size.z + 0.22)
+	fr.mesh = fb; fr.material_override = _flat(Color(0.30, 0.21, 0.13))
+	fr.position = center - Vector3(0.02 * signf(center.x), 0.0, 0.0)
+	root.add_child(fr)
+
 func _church(pos: Vector3) -> void:
 	var root := Node3D.new(); root.position = pos; add_child(root)
-	var body := MeshInstance3D.new()
-	var bm := BoxMesh.new(); bm.size = Vector3(7, 7, 7)
-	body.mesh = bm; body.material_override = _flat(Color(0.86, 0.84, 0.78)); body.position = Vector3(0, 3.5, 0)
-	root.add_child(body)
+	var wcol := Color(0.87, 0.85, 0.79)
+	var hx := 3.6; var hz := 3.6; var hh := 7.0; var t := 0.4
+	# stone floor
+	var fl := MeshInstance3D.new()
+	var fb := BoxMesh.new(); fb.size = Vector3(hx * 2, 0.16, hz * 2)
+	fl.mesh = fb; fl.material_override = _flat(Color(0.58, 0.56, 0.52)); fl.position = Vector3(0, 0.08, 0)
+	root.add_child(fl)
+	# walls with a tall doorway on +Z
+	_wall_seg(root, Vector3(hx * 2 + t, hh, t), Vector3(0, hh * 0.5, -hz), wcol)
+	_wall_seg(root, Vector3(t, hh, hz * 2), Vector3(-hx, hh * 0.5, 0), wcol)
+	_wall_seg(root, Vector3(t, hh, hz * 2), Vector3(hx, hh * 0.5, 0), wcol)
+	var dw := 1.9
+	var seg := (hx * 2 - dw) * 0.5
+	_wall_seg(root, Vector3(seg, hh, t), Vector3(-(dw * 0.5 + seg * 0.5), hh * 0.5, hz), wcol)
+	_wall_seg(root, Vector3(seg, hh, t), Vector3(dw * 0.5 + seg * 0.5, hh * 0.5, hz), wcol)
+	_wall_seg(root, Vector3(dw, hh - 3.2, t), Vector3(0, hh - (hh - 3.2) * 0.5, hz), wcol)
+	# tall arched windows on the sides
+	for zz in [-1.6, 1.6]:
+		_window(root, Vector3(0.12, 2.4, 1.0), Vector3(-hx - 0.02, 3.6, zz))
+		_window(root, Vector3(0.12, 2.4, 1.0), Vector3(hx + 0.02, 3.6, zz))
+	# cornice + drum + golden dome + cross
+	var cornice := MeshInstance3D.new()
+	var cc := BoxMesh.new(); cc.size = Vector3(hx * 2 + 0.9, 0.55, hz * 2 + 0.9)
+	cornice.mesh = cc; cornice.material_override = _flat(Color(0.79, 0.77, 0.71)); cornice.position = Vector3(0, hh, 0)
+	root.add_child(cornice)
 	var drum := MeshInstance3D.new()
-	var dc := CylinderMesh.new(); dc.top_radius = 1.1; dc.bottom_radius = 1.1; dc.height = 1.6
-	drum.mesh = dc; drum.material_override = _flat(Color(0.8, 0.78, 0.72)); drum.position = Vector3(0, 7.8, 0)
+	var dc := CylinderMesh.new(); dc.top_radius = 1.1; dc.bottom_radius = 1.1; dc.height = 1.8
+	drum.mesh = dc; drum.material_override = _flat(Color(0.81, 0.79, 0.73)); drum.position = Vector3(0, hh + 1.1, 0)
 	root.add_child(drum)
 	var dome := MeshInstance3D.new()
-	var sm := SphereMesh.new(); sm.radius = 1.5; sm.height = 2.6
+	var sm := SphereMesh.new(); sm.radius = 1.5; sm.height = 2.8
 	dome.mesh = sm
-	var gm := _flat(Color(0.85, 0.69, 0.22)); gm.metallic = 0.6; gm.roughness = 0.3
-	dome.material_override = gm; dome.position = Vector3(0, 9.4, 0)
+	var gm := _flat(Color(0.86, 0.70, 0.22)); gm.metallic = 0.7; gm.roughness = 0.25
+	dome.material_override = gm; dome.position = Vector3(0, hh + 2.9, 0)
 	root.add_child(dome)
 	var cross := MeshInstance3D.new()
-	var cb := BoxMesh.new(); cb.size = Vector3(0.1, 1.2, 0.1)
-	cross.mesh = cb; cross.material_override = _flat(Color(0.9, 0.78, 0.3)); cross.position = Vector3(0, 11.2, 0)
+	var cb := BoxMesh.new(); cb.size = Vector3(0.12, 1.5, 0.12)
+	cross.mesh = cb; cross.material_override = _flat(Color(0.92, 0.80, 0.32)); cross.position = Vector3(0, hh + 4.8, 0)
 	root.add_child(cross)
-	_solid(root, Vector3(7, 7, 7), Vector3(0, 3.5, 0))
+	var cbar := MeshInstance3D.new()
+	var cbm := BoxMesh.new(); cbm.size = Vector3(0.7, 0.12, 0.12)
+	cbar.mesh = cbm; cbar.material_override = _flat(Color(0.92, 0.80, 0.32)); cbar.position = Vector3(0, hh + 5.0, 0)
+	root.add_child(cbar)
 
 func _tower(pos: Vector3) -> void:
 	var root := Node3D.new(); root.position = pos; add_child(root)
@@ -321,24 +402,83 @@ func _tower(pos: Vector3) -> void:
 	var bm := BoxMesh.new(); bm.size = Vector3(4, 9, 4)
 	body.mesh = bm; body.material_override = _flat(Color(0.55, 0.45, 0.34)); body.position = Vector3(0, 4.5, 0)
 	root.add_child(body)
+	# corner posts for a timbered look
+	for sx in [-1.9, 1.9]:
+		for sz in [-1.9, 1.9]:
+			var post := MeshInstance3D.new()
+			var pb := BoxMesh.new(); pb.size = Vector3(0.4, 9.2, 0.4)
+			post.mesh = pb; post.material_override = _flat(Color(0.42, 0.33, 0.24)); post.position = Vector3(sx, 4.6, sz)
+			root.add_child(post)
+	# arrow-slit windows
+	for sz2 in [-1.0, 1.0]:
+		_window(root, Vector3(0.1, 1.2, 0.4), Vector3(2.02, 6.0, sz2))
+		_window(root, Vector3(0.1, 1.2, 0.4), Vector3(-2.02, 6.0, sz2))
 	var roof := MeshInstance3D.new()
 	var rc := CylinderMesh.new(); rc.top_radius = 0.0; rc.bottom_radius = 3.2; rc.height = 3.5
 	roof.mesh = rc; roof.material_override = _flat(Color(0.38, 0.3, 0.24)); roof.position = Vector3(0, 10.6, 0)
 	root.add_child(roof)
 	_solid(root, Vector3(4, 9, 4), Vector3(0, 4.5, 0))
 
-func _izba(pos: Vector3) -> void:
+func _well(pos: Vector3) -> void:
 	var root := Node3D.new(); root.position = pos; add_child(root)
-	var body := MeshInstance3D.new()
-	var bm := BoxMesh.new(); bm.size = Vector3(4, 3, 5)
-	body.mesh = bm; body.material_override = _flat(Color(0.46, 0.34, 0.22)); body.position = Vector3(0, 1.5, 0)
-	root.add_child(body)
+	var ring := MeshInstance3D.new()
+	var cm := CylinderMesh.new(); cm.top_radius = 1.0; cm.bottom_radius = 1.1; cm.height = 1.2
+	ring.mesh = cm; ring.material_override = _flat(Color(0.5, 0.5, 0.52)); ring.position = Vector3(0, 0.6, 0)
+	root.add_child(ring)
+	for sx in [-1.0, 1.0]:
+		var post := MeshInstance3D.new()
+		var pb := BoxMesh.new(); pb.size = Vector3(0.18, 2.4, 0.18)
+		post.mesh = pb; post.material_override = _flat(Color(0.4, 0.3, 0.2)); post.position = Vector3(sx, 1.8, 0)
+		root.add_child(post)
 	var roof := MeshInstance3D.new()
-	var pr := PrismMesh.new(); pr.size = Vector3(4.6, 2.0, 5.4)
-	roof.mesh = pr; roof.material_override = _flat(Color(0.34, 0.26, 0.18)); roof.position = Vector3(0, 4.0, 0)
+	var pr := PrismMesh.new(); pr.size = Vector3(2.8, 0.9, 1.6)
+	roof.mesh = pr; roof.material_override = _flat(Color(0.34, 0.26, 0.18)); roof.position = Vector3(0, 3.2, 0)
 	root.add_child(roof)
+	_solid(root, Vector3(2.2, 1.2, 2.2), Vector3(0, 0.6, 0))
+
+# enterable log house; big -> larger village hall
+func _izba(pos: Vector3, big := false) -> void:
+	var root := Node3D.new(); root.position = pos; add_child(root)
 	root.rotate_y(randf() * TAU)
-	_solid(root, Vector3(4, 3, 5), Vector3(0, 1.5, 0))
+	var hx := 2.5 if big else 2.0
+	var hz := 3.1 if big else 2.5
+	var hh := 3.3 if big else 2.7
+	var t := 0.3
+	var logc := Color(0.50, 0.37, 0.24) if big else Color(0.46, 0.34, 0.22)
+	# plank floor
+	var fl := MeshInstance3D.new()
+	var fb := BoxMesh.new(); fb.size = Vector3(hx * 2, 0.1, hz * 2)
+	fl.mesh = fb; fl.material_override = _flat(Color(0.36, 0.27, 0.18)); fl.position = Vector3(0, 0.05, 0)
+	root.add_child(fl)
+	# walls with door gap on +Z
+	_wall_seg(root, Vector3(hx * 2 + t, hh, t), Vector3(0, hh * 0.5, -hz), logc)
+	_wall_seg(root, Vector3(t, hh, hz * 2), Vector3(-hx, hh * 0.5, 0), logc)
+	_wall_seg(root, Vector3(t, hh, hz * 2), Vector3(hx, hh * 0.5, 0), logc)
+	var dw := 1.3
+	var seg := (hx * 2 - dw) * 0.5
+	_wall_seg(root, Vector3(seg, hh, t), Vector3(-(dw * 0.5 + seg * 0.5), hh * 0.5, hz), logc)
+	_wall_seg(root, Vector3(seg, hh, t), Vector3(dw * 0.5 + seg * 0.5, hh * 0.5, hz), logc)
+	_wall_seg(root, Vector3(dw + 0.2, hh - 2.1, t), Vector3(0, hh - (hh - 2.1) * 0.5, hz), logc)
+	# door-frame posts (decor)
+	for dx in [-dw * 0.5 - 0.05, dw * 0.5 + 0.05]:
+		var jamb := MeshInstance3D.new()
+		var jb := BoxMesh.new(); jb.size = Vector3(0.14, 2.1, 0.36)
+		jamb.mesh = jb; jamb.material_override = _flat(Color(0.32, 0.22, 0.14)); jamb.position = Vector3(dx, 1.05, hz)
+		root.add_child(jamb)
+	# shuttered windows on the sides
+	for zz in [-0.9, 0.9]:
+		_window(root, Vector3(0.1, 0.8, 0.8), Vector3(-hx - 0.02, 1.6, zz))
+		_window(root, Vector3(0.1, 0.8, 0.8), Vector3(hx + 0.02, 1.6, zz))
+	# gable roof
+	var roof := MeshInstance3D.new()
+	var pr := PrismMesh.new(); pr.size = Vector3(hx * 2 + 0.7, 2.2, hz * 2 + 0.7)
+	roof.mesh = pr; roof.material_override = _flat(Color(0.33, 0.25, 0.17)); roof.position = Vector3(0, hh + 1.0, 0)
+	root.add_child(roof)
+	# chimney with a faint glow
+	var ch := MeshInstance3D.new()
+	var cbx := BoxMesh.new(); cbx.size = Vector3(0.5, 1.5, 0.5)
+	ch.mesh = cbx; ch.material_override = _flat(Color(0.42, 0.40, 0.40)); ch.position = Vector3(hx * 0.55, hh + 1.7, -hz * 0.4)
+	root.add_child(ch)
 
 func _flat(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
