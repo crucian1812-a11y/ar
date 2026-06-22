@@ -23,9 +23,10 @@ var shop_names: Array = []
 var toast := ""
 var toast_t := 0.0
 # inventory
-var inv_weapons: Array = []
-var inv_equipped := 0
+var inv_rows: Array = []
+var inv_flags: Array = []
 var inv_stats := ""
+var shop_owned: Array = []
 var _inventory := false
 var _equip := -1
 var _dodge := false
@@ -79,26 +80,25 @@ func consume_dodge() -> bool:
 	var d := _dodge; _dodge = false; return d
 
 func _dodge_btn() -> Vector2:
-	var v := _vp(); return Vector2(v.x - 150.0, v.y - 232.0)
-func _dodge_r() -> float: return 50.0
+	var v := _vp(); return Vector2(v.x - 182.0, v.y - 226.0)
+func _dodge_r() -> float: return 46.0
 func _inv_btn() -> Vector2:
-	var v := _vp(); return Vector2(v.x - 48.0, 132.0)
-func _inv_r() -> float: return 38.0
+	var v := _vp(); return Vector2(v.x - 60.0, 120.0)
+func _inv_r() -> float: return 40.0
 func _inv_row(i: int) -> Rect2:
 	var p := _shop_panel()
-	var rh := 56.0
-	return Rect2(p.position.x + 20.0, p.position.y + 120.0 + i * (rh + 10.0), p.size.x - 40.0, rh)
+	var rh := 44.0
+	return Rect2(p.position.x + 20.0, p.position.y + 108.0 + i * (rh + 6.0), p.size.x - 40.0, rh)
 
 # ---- geometry ----
 func _attack_center() -> Vector2:
-	var v := _vp(); return Vector2(v.x - 110.0, v.y - 120.0)
+	var v := _vp(); return Vector2(v.x - 112.0, v.y - 112.0)
 func _jump_center() -> Vector2:
-	var v := _vp(); return Vector2(v.x - 240.0, v.y - 95.0)
-func _attack_r() -> float: return 80.0
-func _jump_r() -> float: return 58.0
-func _interact_btn() -> Vector2:
-	var v := _vp(); return Vector2(v.x * 0.5, v.y - 70.0)
-func _interact_r() -> float: return 64.0
+	var v := _vp(); return Vector2(v.x - 252.0, v.y - 96.0)
+func _attack_r() -> float: return 66.0
+func _jump_r() -> float: return 46.0
+func _interact_rect() -> Rect2:
+	var v := _vp(); return Rect2(v.x * 0.5 - 110.0, v.y - 112.0, 220.0, 62.0)
 
 func _char_rect(i: int) -> Rect2:
 	var v := _vp()
@@ -111,14 +111,14 @@ func _char_rect(i: int) -> Rect2:
 
 func _shop_panel() -> Rect2:
 	var v := _vp()
-	var w := minf(640.0, v.x - 80.0)
-	var h := minf(520.0, v.y - 80.0)
+	var w := minf(660.0, v.x - 60.0)
+	var h := minf(600.0, v.y - 40.0)
 	return Rect2((v.x - w) * 0.5, (v.y - h) * 0.5, w, h)
 
 func _shop_row(i: int) -> Rect2:
 	var p := _shop_panel()
-	var rh := 56.0
-	return Rect2(p.position.x + 20.0, p.position.y + 80.0 + i * (rh + 10.0), p.size.x - 40.0, rh)
+	var rh := 40.0
+	return Rect2(p.position.x + 20.0, p.position.y + 72.0 + i * (rh + 6.0), p.size.x - 40.0, rh)
 
 func _shop_close() -> Rect2:
 	var p := _shop_panel()
@@ -145,7 +145,7 @@ func _inv_tap(p: Vector2) -> void:
 	if _shop_close().has_point(p):
 		_close = true
 		return
-	for i in range(inv_weapons.size()):
+	for i in range(inv_rows.size()):
 		if _inv_row(i).has_point(p):
 			_equip = i
 			return
@@ -189,7 +189,7 @@ func _play_input(event: InputEvent) -> void:
 func _press(p: Vector2, id: int) -> void:
 	if p.distance_to(_inv_btn()) <= _inv_r():
 		_inventory = true; return
-	if can_interact and p.distance_to(_interact_btn()) <= _interact_r():
+	if can_interact and _interact_rect().has_point(p):
 		_interact = true; return
 	if p.distance_to(_attack_center()) <= _attack_r():
 		_attack = true; return
@@ -257,11 +257,11 @@ func _draw_play() -> void:
 		for ly in [-7.0, 0.0, 7.0]:
 			draw_line(iv + Vector2(-14, ly), iv + Vector2(14, ly), Color.WHITE, 3.0)
 		if can_interact:
-			var ic := _interact_btn()
-			draw_circle(ic, _interact_r(), Color(0.2, 0.45, 0.25, 0.7))
-			draw_arc(ic, _interact_r(), 0, TAU, 40, Color(0.9, 0.85, 0.4, 0.95), 3.0, true)
+			var ir := _interact_rect()
+			draw_rect(ir, Color(0.2, 0.45, 0.25, 0.85))
+			draw_rect(ir, Color(0.9, 0.85, 0.4, 0.95), false, 3.0)
 			if font:
-				draw_string(font, ic + Vector2(0, 6), "КУПИТЬ", HORIZONTAL_ALIGNMENT_CENTER, -1, 18, Color.WHITE)
+				draw_string(font, Vector2(ir.position.x, ir.position.y + 40), "ТОРГОВЛЯ", HORIZONTAL_ALIGNMENT_CENTER, ir.size.x, 24, Color.WHITE)
 
 	# HUD bar
 	var bx := 24.0; var by := 24.0; var bw := 300.0; var bh := 26.0
@@ -292,10 +292,13 @@ func _draw_shop() -> void:
 		draw_string(font, cl.position + Vector2(14, 31), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
 	for i in range(shop_names.size()):
 		var r := _shop_row(i)
-		draw_rect(r, Color(0.2, 0.19, 0.17))
+		var owned: bool = i < shop_owned.size() and shop_owned[i]
+		draw_rect(r, Color(0.18, 0.22, 0.18) if owned else Color(0.2, 0.19, 0.17))
 		draw_rect(r, Color(0.5, 0.45, 0.35), false, 1.5)
 		if font:
-			draw_string(font, r.position + Vector2(14, 36), str(shop_names[i]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
+			draw_string(font, r.position + Vector2(14, 28), str(shop_names[i]), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.7, 0.7, 0.7) if owned else Color.WHITE)
+			if owned:
+				draw_string(font, Vector2(r.position.x + r.size.x - 16, r.position.y + 28), "✓", HORIZONTAL_ALIGNMENT_RIGHT, -1, 20, Color(0.5, 0.85, 0.45))
 
 func _draw_inv() -> void:
 	var v := _vp()
@@ -312,14 +315,18 @@ func _draw_inv() -> void:
 	draw_rect(cl, Color(0.4, 0.15, 0.13))
 	if font:
 		draw_string(font, cl.position + Vector2(14, 31), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
-	for i in range(inv_weapons.size()):
+	for i in range(inv_rows.size()):
 		var r := _inv_row(i)
-		var equipped := i == inv_equipped
-		draw_rect(r, Color(0.22, 0.28, 0.20) if equipped else Color(0.2, 0.19, 0.17))
-		draw_rect(r, Color(0.5, 0.8, 0.4) if equipped else Color(0.5, 0.45, 0.35), false, 2.0)
+		var equipped: bool = i < inv_flags.size() and inv_flags[i]
+		var label := str(inv_rows[i])
+		var is_header := label.begins_with("—")
+		if not is_header:
+			draw_rect(r, Color(0.22, 0.30, 0.20) if equipped else Color(0.2, 0.19, 0.17))
+			draw_rect(r, Color(0.55, 0.85, 0.45) if equipped else Color(0.5, 0.45, 0.35), false, 2.0)
 		if font:
-			var tag := "  ✓ надето" if equipped else ""
-			draw_string(font, r.position + Vector2(14, 36), str(inv_weapons[i]) + tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
+			var tag := "   ✓ надето" if equipped else ""
+			var col := Color(0.85, 0.78, 0.5) if is_header else Color.WHITE
+			draw_string(font, r.position + Vector2(14, 34), label + tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, col)
 
 func _draw_menu() -> void:
 	var v := _vp()

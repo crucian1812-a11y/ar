@@ -23,13 +23,22 @@ var sun: DirectionalLight3D
 var day_t := 0.16
 
 var shop := [
-	{"name": "Лечебное зелье (+40 HP)", "price": 25, "type": "heal", "value": 40.0},
-	{"name": "Стальной клинок (+15 урон)", "price": 60, "type": "weapon", "value": 15.0},
-	{"name": "Булатный меч (+35 урон)", "price": 160, "type": "weapon", "value": 35.0},
-	{"name": "Кольчуга (+15% брони)", "price": 70, "type": "armor", "value": 0.15},
-	{"name": "Латный доспех (+25% брони)", "price": 180, "type": "armor", "value": 0.25},
-	{"name": "Эликсир силы (+40 макс. HP)", "price": 120, "type": "maxhp", "value": 40.0},
+	{"name": "Лечебное зелье (+40 HP)", "price": 25, "kind": "heal", "v": 40.0},
+	{"name": "Боевой топор", "price": 70, "kind": "weapon", "v": 2},
+	{"name": "Двуручный меч", "price": 150, "kind": "weapon", "v": 1},
+	{"name": "Секира", "price": 175, "kind": "weapon", "v": 3},
+	{"name": "Кинжал", "price": 55, "kind": "weapon", "v": 4},
+	{"name": "Копьё", "price": 120, "kind": "weapon", "v": 5},
+	{"name": "Арбалет (дальний бой)", "price": 170, "kind": "weapon", "v": 6},
+	{"name": "Меч", "price": 60, "kind": "weapon", "v": 0},
+	{"name": "Круглый щит", "price": 55, "kind": "shield", "v": 1},
+	{"name": "Большой щит", "price": 130, "kind": "shield", "v": 2},
+	{"name": "Шлем", "price": 50, "kind": "helmet", "v": 0},
+	{"name": "Кольчуга (броня)", "price": 90, "kind": "armortier", "v": 1},
+	{"name": "Латный доспех (броня)", "price": 200, "kind": "armortier", "v": 2},
+	{"name": "Эликсир силы (+40 макс HP)", "price": 120, "kind": "maxhp", "v": 40.0},
 ]
+var _inv_actions: Array = []
 
 func _ready() -> void:
 	randomize()
@@ -339,9 +348,7 @@ func start_game(id: int) -> void:
 	_clear_actors()
 	player.set_character(id)
 	player.hp = player.max_hp
-	player.gold = 40
-	player.armor = 0.0
-	player.dmg_bonus = 0.0
+	player.gold = 80
 	player.global_position = Vector3(0, 2.0, 12)
 	player.velocity = Vector3.ZERO
 	kills = 0; alive = 0
@@ -441,20 +448,35 @@ func show_toast(text: String) -> void:
 		controls.toast = text
 		controls.toast_t = 2.5
 
+func _shop_owned(item) -> bool:
+	match item["kind"]:
+		"weapon": return int(item["v"]) in player.owned_weapons
+		"shield": return int(item["v"]) in player.owned_shields
+		"helmet": return player.helmet_owned
+		"armortier": return player.armor_tier >= int(item["v"])
+		_: return false
+
 func buy(index: int) -> void:
 	if index < 0 or index >= shop.size():
 		return
 	var item = shop[index]
+	if _shop_owned(item):
+		show_toast("Уже куплено")
+		return
 	if player.gold < item["price"]:
 		show_toast("Не хватает золота")
 		return
 	player.gold -= item["price"]
-	match item["type"]:
-		"heal": player.heal(item["value"])
-		"weapon": player.add_dmg(item["value"])
-		"armor": player.add_armor(item["value"])
-		"maxhp": player.add_maxhp(item["value"])
-	show_toast("Куплено: " + item["name"])
+	match item["kind"]:
+		"heal": player.heal(item["v"])
+		"maxhp": player.add_maxhp(item["v"])
+		"weapon": player.own_weapon(int(item["v"])); show_toast("Куплено! Наденьте в снаряжении (☰)")
+		"shield": player.own_shield(int(item["v"])); show_toast("Куплено! Наденьте в снаряжении (☰)")
+		"helmet": player.helmet_owned = true; show_toast("Шлем куплен — наденьте в снаряжении")
+		"armortier": player.set_armor_tier(int(item["v"])); show_toast("Доспех надет")
+	if item["kind"] in ["heal", "maxhp", "armortier"]:
+		show_toast("Куплено: " + item["name"])
+	_refresh_shop_state()
 
 func _process(delta: float) -> void:
 	_update_daynight(delta)
@@ -480,8 +502,12 @@ func _process(delta: float) -> void:
 				_open_inventory()
 		"inv":
 			var ei: int = controls.consume_equip()
-			if ei >= 0:
-				player.equip(ei)
+			if ei >= 0 and ei < _inv_actions.size():
+				var a = _inv_actions[ei]
+				match a["t"]:
+					"w": player.equip_weapon(a["v"])
+					"s": player.equip_shield(a["v"])
+					"helm": player.toggle_helmet()
 				_refresh_inv()
 			if controls.consume_close():
 				state = "play"
@@ -513,18 +539,42 @@ func _open_inventory() -> void:
 	controls.state = 5
 
 func _refresh_inv() -> void:
-	controls.inv_weapons = player.weapon_names()
-	controls.inv_equipped = player.weapon_idx
-	controls.inv_stats = "Урон: %d    Броня: %d%%    HP: %d/%d    Золото: %d" % [
-		player.total_dmg(), int(player.armor * 100), int(player.hp), int(player.max_hp), player.gold]
+	var rows := []
+	var flags := []
+	var acts := []
+	rows.append("— ОРУЖИЕ —"); flags.append(false); acts.append({"t": "h"})
+	for wi in player.owned_weapons:
+		rows.append("  " + player.WEAPONS[wi]["name"])
+		flags.append(wi == player.equipped_weapon)
+		acts.append({"t": "w", "v": wi})
+	rows.append("— ЩИТ —"); flags.append(false); acts.append({"t": "h"})
+	for si in player.owned_shields:
+		rows.append("  " + player.SHIELDS[si]["name"])
+		flags.append(si == player.equipped_shield)
+		acts.append({"t": "s", "v": si})
+	if player.helmet_owned:
+		rows.append("— ПРОЧЕЕ —"); flags.append(false); acts.append({"t": "h"})
+		rows.append("  Шлем"); flags.append(player.helmet_on); acts.append({"t": "helm"})
+	controls.inv_rows = rows
+	controls.inv_flags = flags
+	_inv_actions = acts
+	controls.inv_stats = "Урон: %d    Броня: %d%%    HP: %d/%d    Золото: %d    (доспех: %s)" % [
+		player.total_dmg(), int(player.armor * 100), int(player.hp), int(player.max_hp), player.gold,
+		player.ARMOR_NAMES[player.armor_tier]]
 
 func _open_shop() -> void:
-	var names := []
-	for it in shop:
-		names.append("%s — %d з." % [it["name"], it["price"]])
-	controls.shop_names = names
+	_refresh_shop_state()
 	state = "shop"
 	controls.state = 4
+
+func _refresh_shop_state() -> void:
+	var names := []
+	var owned := []
+	for it in shop:
+		names.append("%s — %d з." % [it["name"], it["price"]])
+		owned.append(_shop_owned(it))
+	controls.shop_names = names
+	controls.shop_owned = owned
 
 func _game_over() -> void:
 	state = "gameover"

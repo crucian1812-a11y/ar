@@ -4,6 +4,7 @@ class_name GameProjectile
 var vel := Vector3.ZERO
 var dmg := 7.0
 var life := 4.0
+var hit_group := "player"   # whom this projectile damages
 
 func _ready() -> void:
 	add_to_group("proj")
@@ -21,11 +22,11 @@ func _process(delta: float) -> void:
 	if vel.length() > 0.01:
 		look_at(global_position + vel, Vector3.UP)
 	life -= delta
-	var p = get_tree().get_first_node_in_group("player")
-	if p and global_position.distance_to(p.global_position + Vector3.UP * 1.0) < 1.2:
-		if p.has_method("take_damage"):
-			p.take_damage(dmg)
-		queue_free()
-		return
+	for t in get_tree().get_nodes_in_group(hit_group):
+		if global_position.distance_to(t.global_position + Vector3.UP * 1.0) < 1.3:
+			if t.has_method("take_damage"):
+				t.take_damage(dmg)
+			queue_free()
+			return
 	if life <= 0.0 or global_position.y < -2.0:
 		queue_free()
