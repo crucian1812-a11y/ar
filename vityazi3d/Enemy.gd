@@ -123,7 +123,7 @@ func take_damage(d: float) -> void:
 	_set_tint(true)
 	var player = get_tree().get_first_node_in_group("player")
 	if player:
-		var away := (global_position - player.global_position).normalized()
+		var away: Vector3 = (global_position - player.global_position).normalized()
 		velocity += away * (2.0 if kind == Kind.BOSS else 4.0)
 	if hp <= 0.0:
 		Sfx.enemy_die()
