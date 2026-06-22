@@ -40,6 +40,17 @@ var shop := [
 ]
 var _inv_actions: Array = []
 
+var quests := [
+	{"title": "Очистка дорог", "desc": "Победи 6 врагов в округе.", "type": "kills", "target": 6, "reward": 70},
+	{"title": "Казна княжества", "desc": "Накопи 200 золота.", "type": "gold", "target": 200, "reward": 90},
+	{"title": "Древние реликвии", "desc": "Собери 5 артефактов.", "type": "pickups", "target": 5, "reward": 120},
+]
+var quest_idx := 0
+var quest_active := false
+var kills_base := 0
+var pickups_collected := 0
+var pickups_base := 0
+
 func _ready() -> void:
 	randomize()
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -229,20 +240,27 @@ func _build_town() -> void:
 		_tower(Vector3(cos(a2) * ring, 0, sin(a2) * ring))
 	for s in [Vector3(-18, 0, -10), Vector3(18, 0, -10), Vector3(-20, 0, 12), Vector3(20, 0, 12)]:
 		_izba(s)
-	_make_npc(Vector3(8, 0, 4))      # town merchant
+	_make_npc(Vector3(8, 0, 4))                 # town merchant
+	_make_npc(Vector3(-8, 0, 4), "quest")       # town quest-giver
 
 func _build_villages() -> void:
+	var vi := 0
 	for center in [Vector3(-78, 0, -34), Vector3(80, 0, 50), Vector3(-90, 0, 60), Vector3(95, 0, -40)]:
 		for off in [Vector3(-6, 0, -5), Vector3(7, 0, -4), Vector3(-5, 0, 7), Vector3(8, 0, 8), Vector3(0, 0, -9)]:
 			_izba(center + off)
 		_make_npc(center)
+		# every other village also has a quest-giver
+		if vi % 2 == 1:
+			_make_npc(center + Vector3(3, 0, 3), "quest")
+		vi += 1
 	# a couple of lone landmarks for exploration
 	_tower(Vector3(0, 0, 110))
 	_tower(Vector3(-110, 0, 0))
 	_church(Vector3(115, 0, 95))
 
-func _make_npc(pos: Vector3) -> void:
+func _make_npc(pos: Vector3, kind := "merchant") -> void:
 	var npc := GameNpc.new()
+	npc.kind = kind
 	add_child(npc)
 	npc.global_position = pos
 
@@ -353,6 +371,11 @@ func start_game(id: int) -> void:
 	player.velocity = Vector3.ZERO
 	kills = 0; alive = 0
 	boss_defeated = false
+	quest_idx = 0
+	quest_active = false
+	kills_base = 0
+	pickups_collected = 0
+	pickups_base = 0
 	state = "play"
 	controls.state = 1
 	_spawn_world_enemies()
@@ -476,6 +499,7 @@ func buy(index: int) -> void:
 		"armortier": player.set_armor_tier(int(item["v"])); show_toast("Доспех надет")
 	if item["kind"] in ["heal", "maxhp", "armortier"]:
 		show_toast("Куплено: " + item["name"])
+	Sfx.buy()
 	_refresh_shop_state()
 
 func _process(delta: float) -> void:
@@ -485,6 +509,11 @@ func _process(delta: float) -> void:
 		controls.hp_frac = clampf(player.hp / player.max_hp, 0.0, 1.0)
 		controls.kills = kills
 		controls.gold = player.gold
+		if quest_active and quest_idx < quests.size():
+			var q = quests[quest_idx]
+			controls.quest_hud = "%s  %d/%d" % [q["title"], _quest_progress(), q["target"]]
+		else:
+			controls.quest_hud = ""
 
 	match state:
 		"menu":
@@ -497,7 +526,10 @@ func _process(delta: float) -> void:
 				_game_over()
 				return
 			if controls.consume_interact() and near_npc != null:
-				_open_shop()
+				if near_npc.kind == "quest":
+					_open_quest()
+				else:
+					_open_shop()
 			if controls.consume_inventory():
 				_open_inventory()
 		"inv":
@@ -519,6 +551,12 @@ func _process(delta: float) -> void:
 			if controls.consume_close():
 				state = "play"
 				controls.state = 1
+		"quest":
+			if controls.consume_quest():
+				_quest_action()
+			if controls.consume_close():
+				state = "play"
+				controls.state = 1
 		"gameover", "win":
 			if controls.consume_restart():
 				_to_menu()
@@ -532,6 +570,8 @@ func _update_interaction() -> void:
 			best = d
 			near_npc = n
 	controls.can_interact = near_npc != null
+	if near_npc != null:
+		controls.interact_label = "ЗАДАНИЕ" if near_npc.kind == "quest" else "ТОРГОВЛЯ"
 
 func _open_inventory() -> void:
 	_refresh_inv()
@@ -575,6 +615,77 @@ func _refresh_shop_state() -> void:
 		owned.append(_shop_owned(it))
 	controls.shop_names = names
 	controls.shop_owned = owned
+
+func on_pickup() -> void:
+	pickups_collected += 1
+
+# ---------------- quests ----------------
+
+func _quest_progress() -> int:
+	if quest_idx >= quests.size():
+		return 0
+	var q = quests[quest_idx]
+	match q["type"]:
+		"kills": return kills - kills_base
+		"pickups": return pickups_collected - pickups_base
+		"gold": return player.gold
+	return 0
+
+func _quest_done() -> bool:
+	if quest_idx >= quests.size():
+		return false
+	return _quest_progress() >= int(quests[quest_idx]["target"])
+
+func _open_quest() -> void:
+	_refresh_quest_dialog()
+	state = "quest"
+	controls.state = 6
+
+func _quest_action() -> void:
+	if quest_idx >= quests.size():
+		state = "play"
+		controls.state = 1
+		return
+	var q = quests[quest_idx]
+	if not quest_active:
+		quest_active = true
+		if q["type"] == "kills":
+			kills_base = kills
+		elif q["type"] == "pickups":
+			pickups_base = pickups_collected
+		show_toast("Задание принято: " + q["title"])
+		_refresh_quest_dialog()
+	elif _quest_done():
+		player.add_gold(int(q["reward"]))
+		Sfx.quest()
+		show_toast("Награда получена: +%d золота" % int(q["reward"]))
+		quest_idx += 1
+		quest_active = false
+		_refresh_quest_dialog()
+	else:
+		# still in progress — just close
+		state = "play"
+		controls.state = 1
+
+func _refresh_quest_dialog() -> void:
+	if quest_idx >= quests.size():
+		controls.quest_title = "Благодарность"
+		controls.quest_desc = "Все задания выполнены. Спасибо, витязь!"
+		controls.quest_info = ""
+		controls.quest_btn = "Закрыть"
+		return
+	var q = quests[quest_idx]
+	controls.quest_title = q["title"]
+	controls.quest_desc = q["desc"]
+	if not quest_active:
+		controls.quest_info = "Награда: %d золота" % int(q["reward"])
+		controls.quest_btn = "Принять"
+	elif _quest_done():
+		controls.quest_info = "Выполнено!  %d/%d  (награда %d з.)" % [_quest_progress(), int(q["target"]), int(q["reward"])]
+		controls.quest_btn = "Получить награду"
+	else:
+		controls.quest_info = "Прогресс: %d/%d" % [_quest_progress(), int(q["target"])]
+		controls.quest_btn = "В пути (закрыть)"
 
 func _game_over() -> void:
 	state = "gameover"

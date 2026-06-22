@@ -54,13 +54,15 @@ func _collect(p) -> void:
 	var msg := ""
 	match kind:
 		"gold":
-			p.add_gold(int(value)); msg = "+%d золота" % int(value)
+			p.add_gold(int(value)); msg = "+%d золота" % int(value); Sfx.coin()
 		"weapon":
-			p.add_dmg(value); msg = "Найдено оружие: +%d к урону" % int(value)
+			p.add_dmg(value); msg = "Найдено оружие: +%d к урону" % int(value); Sfx.buy()
 		"armor":
-			p.add_armor(value); msg = "Найдена броня: +%d%% защиты" % int(value * 100)
+			p.add_armor(value); msg = "Найден доспех"; Sfx.buy()
 		"heal":
-			p.heal(value); msg = "+%d здоровья" % int(value)
+			p.heal(value); msg = "+%d здоровья" % int(value); Sfx.coin()
 	if main and main.has_method("show_toast"):
 		main.show_toast(msg)
+	if main and main.has_method("on_pickup"):
+		main.on_pickup()
 	queue_free()

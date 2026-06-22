@@ -1,6 +1,6 @@
 extends Control
 
-# state: 0 menu, 1 play, 2 gameover, 3 win, 4 shop
+# state: 0 menu, 1 play, 2 gameover, 3 win, 4 shop, 5 inventory, 6 quest
 var state := 0
 
 var move_vec := Vector2.ZERO
@@ -30,6 +30,14 @@ var shop_owned: Array = []
 var _inventory := false
 var _equip := -1
 var _dodge := false
+# quests
+var interact_label := "ТОРГОВЛЯ"
+var quest_hud := ""
+var quest_title := ""
+var quest_desc := ""
+var quest_info := ""
+var quest_btn := "Принять"
+var _quest := false
 
 const JOY_R := 120.0
 var joy_finger := -1
@@ -78,6 +86,8 @@ func consume_equip() -> int:
 	var e := _equip; _equip = -1; return e
 func consume_dodge() -> bool:
 	var d := _dodge; _dodge = false; return d
+func consume_quest() -> bool:
+	var q := _quest; _quest = false; return q
 
 func _dodge_btn() -> Vector2:
 	var v := _vp(); return Vector2(v.x - 182.0, v.y - 226.0)
@@ -124,6 +134,20 @@ func _shop_close() -> Rect2:
 	var p := _shop_panel()
 	return Rect2(p.position.x + p.size.x - 56.0, p.position.y + 12.0, 44.0, 44.0)
 
+func _quest_panel() -> Rect2:
+	var v := _vp()
+	var w := minf(560.0, v.x - 60.0)
+	var h := minf(340.0, v.y - 40.0)
+	return Rect2((v.x - w) * 0.5, (v.y - h) * 0.5, w, h)
+
+func _quest_btn_rect() -> Rect2:
+	var p := _quest_panel()
+	return Rect2(p.position.x + 24.0, p.position.y + p.size.y - 74.0, p.size.x - 48.0, 54.0)
+
+func _quest_close() -> Rect2:
+	var p := _quest_panel()
+	return Rect2(p.position.x + p.size.x - 56.0, p.position.y + 12.0, 44.0, 44.0)
+
 # ---- input ----
 func _input(event: InputEvent) -> void:
 	if state == 1:
@@ -137,9 +161,20 @@ func _input(event: InputEvent) -> void:
 	elif state == 5:
 		if _pressed(event):
 			_inv_tap(_press_pos(event))
+	elif state == 6:
+		if _pressed(event):
+			_quest_tap(_press_pos(event))
 	else:
 		if _pressed(event):
 			restart = true
+
+func _quest_tap(p: Vector2) -> void:
+	if _quest_close().has_point(p):
+		_close = true
+		return
+	if _quest_btn_rect().has_point(p):
+		_quest = true
+		return
 
 func _inv_tap(p: Vector2) -> void:
 	if _shop_close().has_point(p):
@@ -225,6 +260,7 @@ func _draw() -> void:
 		0: _draw_menu()
 		4: _draw_play(); _draw_shop()
 		5: _draw_play(); _draw_inv()
+		6: _draw_play(); _draw_quest()
 		2: _draw_end("НОВГОРОД ПАЛ", Color(0.85, 0.3, 0.25))
 		3: _draw_end("ПОБЕДА!", Color(0.85, 0.7, 0.3))
 
@@ -258,10 +294,11 @@ func _draw_play() -> void:
 			draw_line(iv + Vector2(-14, ly), iv + Vector2(14, ly), Color.WHITE, 3.0)
 		if can_interact:
 			var ir := _interact_rect()
-			draw_rect(ir, Color(0.2, 0.45, 0.25, 0.85))
+			var icol := Color(0.2, 0.45, 0.25, 0.85) if interact_label == "ТОРГОВЛЯ" else Color(0.45, 0.32, 0.12, 0.9)
+			draw_rect(ir, icol)
 			draw_rect(ir, Color(0.9, 0.85, 0.4, 0.95), false, 3.0)
 			if font:
-				draw_string(font, Vector2(ir.position.x, ir.position.y + 40), "ТОРГОВЛЯ", HORIZONTAL_ALIGNMENT_CENTER, ir.size.x, 24, Color.WHITE)
+				draw_string(font, Vector2(ir.position.x, ir.position.y + 40), interact_label, HORIZONTAL_ALIGNMENT_CENTER, ir.size.x, 24, Color.WHITE)
 
 	# HUD bar
 	var bx := 24.0; var by := 24.0; var bw := 300.0; var bh := 26.0
@@ -271,6 +308,8 @@ func _draw_play() -> void:
 	if font:
 		draw_string(font, Vector2(bx + 8, by + 19), "ВИТЯЗЬ", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
 		draw_string(font, Vector2(v.x - 24, by + 20), "Золото: %d   Повержено: %d" % [gold, kills], HORIZONTAL_ALIGNMENT_RIGHT, -1, 20, Color(0.95, 0.85, 0.4))
+		if quest_hud != "":
+			draw_string(font, Vector2(bx + 4, by + bh + 24), "✦ " + quest_hud, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.55, 0.9, 0.55))
 		if toast_t > 0.0:
 			var a := clampf(toast_t / 2.5, 0.0, 1.0)
 			draw_string(font, Vector2(v.x * 0.5, by + 70), toast, HORIZONTAL_ALIGNMENT_CENTER, -1, 24, Color(1, 1, 0.7, a))
@@ -327,6 +366,27 @@ func _draw_inv() -> void:
 			var tag := "   ✓ надето" if equipped else ""
 			var col := Color(0.85, 0.78, 0.5) if is_header else Color.WHITE
 			draw_string(font, r.position + Vector2(14, 34), label + tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, col)
+
+func _draw_quest() -> void:
+	var v := _vp()
+	var font := ThemeDB.fallback_font
+	draw_rect(Rect2(0, 0, v.x, v.y), Color(0, 0, 0, 0.55))
+	var p := _quest_panel()
+	draw_rect(p, Color(0.10, 0.13, 0.11, 0.97))
+	draw_rect(p, Color(0.5, 0.85, 0.45, 0.9), false, 3.0)
+	var cl := _quest_close()
+	draw_rect(cl, Color(0.4, 0.15, 0.13))
+	if font:
+		draw_string(font, cl.position + Vector2(14, 31), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
+		draw_string(font, Vector2(p.position.x + 24, p.position.y + 46), "ЗАДАНИЕ ЖИТЕЛЯ", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.6, 0.9, 0.5))
+		draw_string(font, Vector2(p.position.x + 24, p.position.y + 92), quest_title, HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color.WHITE)
+		draw_string(font, Vector2(p.position.x + 24, p.position.y + 134), quest_desc, HORIZONTAL_ALIGNMENT_LEFT, p.size.x - 48, 20, Color(0.88, 0.88, 0.85))
+		draw_string(font, Vector2(p.position.x + 24, p.position.y + 176), quest_info, HORIZONTAL_ALIGNMENT_LEFT, p.size.x - 48, 20, Color(0.95, 0.85, 0.4))
+	var br := _quest_btn_rect()
+	draw_rect(br, Color(0.22, 0.42, 0.22))
+	draw_rect(br, Color(0.6, 0.9, 0.5, 0.95), false, 3.0)
+	if font:
+		draw_string(font, Vector2(br.position.x, br.position.y + 36), quest_btn, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, 24, Color.WHITE)
 
 func _draw_menu() -> void:
 	var v := _vp()

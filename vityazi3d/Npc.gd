@@ -1,14 +1,14 @@
 extends Node3D
 class_name GameNpc
 
-var label := "Торговец"
+var kind := "merchant"   # "merchant" or "quest"
 
 func _ready() -> void:
 	add_to_group("npc")
 	var m = load("res://assets/models/Knight.glb").instantiate()
 	add_child(m)
 	m.scale = Vector3.ONE * 0.82
-	# peaceful merchant: hide all weapons/shields, keep helmet
+	# peaceful villager: hide all weapons/shields
 	var sk := _find_class(m, "Skeleton3D")
 	if sk:
 		for c in sk.get_children():
@@ -22,18 +22,24 @@ func _ready() -> void:
 		ap.get_animation("Idle").loop_mode = Animation.LOOP_LINEAR
 		ap.play("Idle")
 
-	# floating gold marker
+	var col := Color(0.95, 0.78, 0.25) if kind == "merchant" else Color(0.45, 0.9, 0.45)
 	var mi := MeshInstance3D.new()
 	var s := SphereMesh.new(); s.radius = 0.18; s.height = 0.36
 	mi.mesh = s
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.95, 0.78, 0.25)
+	mat.albedo_color = col
 	mat.emission_enabled = true
-	mat.emission = Color(0.8, 0.6, 0.15)
+	mat.emission = col
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mi.material_override = mat
-	mi.position = Vector3(0, 2.4, 0)
+	mi.position = Vector3(0, 2.5, 0)
 	add_child(mi)
+	if kind == "quest":
+		# floating "!" exclamation
+		var bar := MeshInstance3D.new()
+		var bm := BoxMesh.new(); bm.size = Vector3(0.08, 0.3, 0.08)
+		bar.mesh = bm; bar.material_override = mat; bar.position = Vector3(0, 2.95, 0)
+		add_child(bar)
 
 func _find_class(node: Node, cls: String) -> Node:
 	if node.get_class() == cls:
