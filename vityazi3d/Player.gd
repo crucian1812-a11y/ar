@@ -16,6 +16,11 @@ var atk_dmg := 42.0
 var atk_reach := 2.8
 var atk_cd_time := 0.6
 
+# RPG stats
+var gold := 40
+var armor := 0.0        # damage reduction 0..0.7
+var dmg_bonus := 0.0    # added to atk_dmg from gear/artifacts
+
 var cam_yaw := 0.0
 var cam_pitch := 0.5
 var cam: Camera3D
@@ -162,17 +167,30 @@ func _do_attack() -> void:
 	for e in get_tree().get_nodes_in_group("enemy"):
 		var to = e.global_position - global_position
 		if to.length() < atk_reach and f.dot(to.normalized()) > 0.1:
-			e.take_damage(atk_dmg)
+			e.take_damage(atk_dmg + dmg_bonus)
 			Sfx.hit()
 
 func take_damage(d: float) -> void:
 	if hurt_t > 0.0:
 		return
-	hp -= d
+	hp -= d * (1.0 - clampf(armor, 0.0, 0.7))
 	hurt_t = 0.6
 	Sfx.hurt()
 	if hp < 0.0:
 		hp = 0.0
+
+# ---- RPG helpers (called by Main for shop / pickups) ----
+func add_gold(n: int) -> void:
+	gold += n
+func add_dmg(n: float) -> void:
+	dmg_bonus += n
+func add_armor(n: float) -> void:
+	armor = clampf(armor + n, 0.0, 0.7)
+func heal(n: float) -> void:
+	hp = minf(hp + n, max_hp)
+func add_maxhp(n: float) -> void:
+	max_hp += n
+	hp = max_hp
 
 func knockback(dir: Vector3, force: float) -> void:
 	velocity.x += dir.x * force

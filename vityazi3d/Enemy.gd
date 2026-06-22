@@ -14,7 +14,10 @@ var reach := 2.0
 var atk_cd_time := 1.3
 var ranged := false
 var mscale := 0.8
+var home := Vector3.ZERO
+var gold_drop := 8
 
+const AGGRO := 22.0
 const GRAVITY := 22.0
 var attack_cd := 0.0
 var anim_lock := 0.0
@@ -120,6 +123,26 @@ func _physics_process(delta: float) -> void:
 		to.y = 0
 		var dist := to.length()
 		var dir := to.normalized() if dist > 0.01 else Vector3.ZERO
+
+		if dist > AGGRO:
+			# passive: stay near the camp until the player comes close
+			var hto := home - global_position
+			hto.y = 0
+			if hto.length() > 3.0:
+				var hd := hto.normalized()
+				velocity.x = hd.x * speed * 0.4
+				velocity.z = hd.z * speed * 0.4
+				moving = true
+				if model:
+					model.rotation.y = lerp_angle(model.rotation.y, atan2(hd.x, hd.z), 0.1)
+			else:
+				velocity.x = move_toward(velocity.x, 0, speed)
+				velocity.z = move_toward(velocity.z, 0, speed)
+			move_and_slide()
+			_update_anim(moving)
+			_update_hpbar()
+			return
+
 		if model:
 			model.rotation.y = lerp_angle(model.rotation.y, atan2(dir.x, dir.z), 0.15)
 
@@ -185,7 +208,7 @@ func take_damage(d: float) -> void:
 		if main:
 			if kind == Kind.BOSS and main.has_method("on_boss_killed"):
 				main.on_boss_killed()
-			main.on_enemy_killed()
+			main.on_enemy_killed(global_position, gold_drop)
 		queue_free()
 
 # ---------------- hp bar ----------------

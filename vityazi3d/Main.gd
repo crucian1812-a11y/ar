@@ -2,28 +2,34 @@ extends Node3D
 
 const WORLD := 170.0
 const CELLS := 70
-const AMP := 7.0
+const AMP := 8.0
 const WATER_Y := -3.0
-const PLAZA := 42.0
-const WAVES_BEFORE_BOSS := 4
+const PLAZA := 95.0
 
 var noise := FastNoiseLite.new()
 var controls
 var player
 
-var state := "menu"            # menu / play / gameover / win
+var state := "menu"            # menu / play / shop / gameover / win
 var kills := 0
-var wave := 0
 var alive := 0
-var spawn_timer := 0.0
-var boss_spawned := false
 var boss_defeated := false
+var near_npc = null
 
 # day/night
 var sky_mat: ProceduralSkyMaterial
 var env: Environment
 var sun: DirectionalLight3D
-var day_t := 0.18
+var day_t := 0.16
+
+var shop := [
+	{"name": "Лечебное зелье (+40 HP)", "price": 25, "type": "heal", "value": 40.0},
+	{"name": "Стальной клинок (+15 урон)", "price": 60, "type": "weapon", "value": 15.0},
+	{"name": "Булатный меч (+35 урон)", "price": 160, "type": "weapon", "value": 35.0},
+	{"name": "Кольчуга (+15% брони)", "price": 70, "type": "armor", "value": 0.15},
+	{"name": "Латный доспех (+25% брони)", "price": 180, "type": "armor", "value": 0.25},
+	{"name": "Эликсир силы (+40 макс. HP)", "price": 120, "type": "maxhp", "value": 40.0},
+]
 
 func _ready() -> void:
 	randomize()
@@ -36,8 +42,9 @@ func _ready() -> void:
 	_build_terrain()
 	_build_floor()
 	_build_water()
-	_scatter_trees(150)
+	_scatter_trees(160)
 	_build_town()
+	_build_villages()
 	_spawn_player()
 	_setup_ui()
 	state = "menu"
@@ -47,16 +54,14 @@ func _ready() -> void:
 		_run_selftest()
 
 func _run_selftest() -> void:
-	# Headless CI smoke test: start a game, wait, report spawn state, exit.
 	start_game(0)
-	var n0 := get_tree().get_nodes_in_group("enemy").size()
 	await get_tree().create_timer(1.5).timeout
-	var n1 := get_tree().get_nodes_in_group("enemy").size()
-	var fe = get_tree().get_first_node_in_group("enemy")
-	var fpos := str(fe.global_position) if fe else "none"
-	print("SELFTEST enemies_after_spawn=%d enemies_after_1.5s=%d alive=%d first=%s player=%s" % [
-		n0, n1, alive, fpos, str(player.global_position)])
-	get_tree().quit(0 if n1 > 0 else 1)
+	print("SELFTEST enemies=%d npcs=%d pickups=%d gold=%d player=%s" % [
+		get_tree().get_nodes_in_group("enemy").size(),
+		get_tree().get_nodes_in_group("npc").size(),
+		get_tree().get_nodes_in_group("pickup").size(),
+		player.gold, str(player.global_position)])
+	get_tree().quit(0 if get_tree().get_nodes_in_group("enemy").size() > 0 else 1)
 
 func terrain_height(x: float, z: float) -> float:
 	var d := Vector2(x, z).length()
@@ -82,28 +87,28 @@ func _build_environment() -> void:
 	env.ambient_light_energy = 0.5
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.78, 0.82, 0.85)
-	env.fog_density = 0.004
+	env.fog_density = 0.0028
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	we.environment = env
 	add_child(we)
 
 	sun = DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-48, -120, 0)
+	sun.rotation_degrees = Vector3(-50, -120, 0)
 	sun.light_energy = 1.15
 	sun.light_color = Color(1.0, 0.96, 0.88)
 	sun.shadow_enabled = true
 	add_child(sun)
 
 func _update_daynight(delta: float) -> void:
-	day_t += delta / 120.0
+	day_t += delta / 150.0
 	var s := sin(day_t * TAU)
 	var up := clampf((s + 1.0) * 0.5, 0.0, 1.0)
-	sun.rotation_degrees = Vector3(lerp(-3.0, -88.0, up), -120.0, 0.0)
-	sun.light_energy = lerp(0.05, 1.25, up)
+	sun.rotation_degrees = Vector3(lerp(-3.0, -85.0, up), -120.0, 0.0)
+	sun.light_energy = lerp(0.06, 1.2, up)
 	sun.light_color = Color(1.0, 0.7, 0.5).lerp(Color(1.0, 0.96, 0.88), up)
 	sky_mat.sky_top_color = Color(0.05, 0.06, 0.12).lerp(Color(0.32, 0.5, 0.74), up)
 	sky_mat.sky_horizon_color = Color(0.12, 0.11, 0.2).lerp(Color(0.80, 0.82, 0.83), up)
-	env.ambient_light_energy = lerp(0.18, 0.6, up)
+	env.ambient_light_energy = lerp(0.2, 0.6, up)
 	env.fog_light_color = Color(0.10, 0.12, 0.22).lerp(Color(0.78, 0.82, 0.85), up)
 
 # ---------------- terrain ----------------
@@ -176,17 +181,15 @@ func _scatter_trees(count: int) -> void:
 	for n in range(count):
 		var x := randf_range(-WORLD + 8, WORLD - 8)
 		var z := randf_range(-WORLD + 8, WORLD - 8)
-		var h := terrain_height(x, z)
-		if h < WATER_Y + 1.5:
+		var d := Vector2(x, z).length()
+		if d < 30.0 or d > 150.0:
 			continue
-		if Vector2(x, z).length() < 24.0:
-			continue
-		_make_tree(Vector3(x, h, z))
+		_make_tree(Vector3(x, terrain_height(x, z), z))
 
 func _make_tree(pos: Vector3) -> void:
 	var root := Node3D.new()
 	root.position = pos
-	var sc := randf_range(0.8, 1.5)
+	var sc := randf_range(0.8, 1.6)
 	var trunk := MeshInstance3D.new()
 	var tm := CylinderMesh.new(); tm.top_radius = 0.18 * sc; tm.bottom_radius = 0.26 * sc; tm.height = 2.2 * sc
 	trunk.mesh = tm; trunk.material_override = _flat(Color(0.36, 0.26, 0.17)); trunk.position = Vector3(0, 1.1 * sc, 0)
@@ -215,11 +218,20 @@ func _build_town() -> void:
 	for i in range(0, seg, 5):
 		var a2 := TAU * float(i) / float(seg)
 		_tower(Vector3(cos(a2) * ring, 0, sin(a2) * ring))
-	_tower(Vector3(cos(gate - 0.33) * ring, 0, sin(gate - 0.33) * ring))
-	_tower(Vector3(cos(gate + 0.33) * ring, 0, sin(gate + 0.33) * ring))
-	for s in [Vector3(-22, 0, -8), Vector3(-26, 0, 3), Vector3(-20, 0, 12),
-			Vector3(22, 0, -10), Vector3(26, 0, 1), Vector3(20, 0, 13)]:
+	for s in [Vector3(-18, 0, -10), Vector3(18, 0, -10), Vector3(-20, 0, 12), Vector3(20, 0, 12)]:
 		_izba(s)
+	_make_npc(Vector3(8, 0, 4))      # town merchant
+
+func _build_villages() -> void:
+	for center in [Vector3(-68, 0, -26), Vector3(64, 0, 42)]:
+		for off in [Vector3(-6, 0, -5), Vector3(7, 0, -4), Vector3(-5, 0, 7), Vector3(8, 0, 8)]:
+			_izba(center + off)
+		_make_npc(center)
+
+func _make_npc(pos: Vector3) -> void:
+	var npc := GameNpc.new()
+	add_child(npc)
+	npc.global_position = pos
 
 func _angdiff(a: float, b: float) -> float:
 	return fmod(a - b + PI, TAU) - PI
@@ -309,7 +321,7 @@ func _spawn_player() -> void:
 	player = preload("res://Player.gd").new()
 	player.main = self
 	add_child(player)
-	player.global_position = Vector3(0, 2.0, 8)
+	player.global_position = Vector3(0, 2.0, 12)
 
 func _setup_ui() -> void:
 	var layer := CanvasLayer.new()
@@ -323,61 +335,120 @@ func start_game(id: int) -> void:
 	_clear_actors()
 	player.set_character(id)
 	player.hp = player.max_hp
-	player.global_position = Vector3(0, 2.0, 8)
+	player.gold = 40
+	player.armor = 0.0
+	player.dmg_bonus = 0.0
+	player.global_position = Vector3(0, 2.0, 12)
 	player.velocity = Vector3.ZERO
-	wave = 0; kills = 0; alive = 0
-	boss_spawned = false; boss_defeated = false
-	spawn_timer = 0.0
+	kills = 0; alive = 0
+	boss_defeated = false
 	state = "play"
 	controls.state = 1
-	_spawn_wave()
+	_spawn_world_enemies()
+	_spawn_pickups()
 
 func _clear_actors() -> void:
 	for e in get_tree().get_nodes_in_group("enemy"):
 		e.queue_free()
 	for p in get_tree().get_nodes_in_group("proj"):
 		p.queue_free()
+	for pk in get_tree().get_nodes_in_group("pickup"):
+		pk.queue_free()
 	alive = 0
 
-func _spawn_wave() -> void:
-	wave += 1
-	var count: int = min(5 + wave * 2, 24)
-	for i in range(count):
+func _spawn_world_enemies() -> void:
+	var camps := [Vector3(70, 0, 18), Vector3(-58, 0, 55), Vector3(22, 0, -78),
+		Vector3(-74, 0, -42), Vector3(72, 0, -52)]
+	for c in camps:
+		_spawn_camp(c, false)
+	_spawn_camp(Vector3(0, 0, -88), true)   # boss camp
+
+func _spawn_camp(center: Vector3, boss: bool) -> void:
+	var n := randi_range(3, 5)
+	for i in range(n):
 		var r := randf()
-		var k: int
-		if wave >= 3 and r < 0.12:
-			k = GameEnemy.Kind.BRUTE
-		elif r < 0.30:
-			k = GameEnemy.Kind.ARCHER
-		elif r < 0.58:
-			k = GameEnemy.Kind.SPEARMAN
-		else:
-			k = GameEnemy.Kind.RAIDER
-		_make_enemy(k, randf_range(16.0, 30.0))
+		var k := GameEnemy.Kind.RAIDER
+		if r < 0.25: k = GameEnemy.Kind.ARCHER
+		elif r < 0.5: k = GameEnemy.Kind.SPEARMAN
+		elif r < 0.65: k = GameEnemy.Kind.BRUTE
+		var off := Vector3(randf_range(-7, 7), 0, randf_range(-7, 7))
+		_make_enemy(k, center + off)
+	if boss:
+		_make_enemy(GameEnemy.Kind.BOSS, center)
 
-func _spawn_boss() -> void:
-	boss_spawned = true
-	_make_enemy(GameEnemy.Kind.BOSS, 18.0)
-	for i in range(4):
-		_make_enemy(GameEnemy.Kind.RAIDER, randf_range(14.0, 24.0))
-
-func _make_enemy(kind: int, dist: float) -> void:
+func _make_enemy(kind: int, pos: Vector3) -> void:
 	var e := GameEnemy.new()
 	e.kind = kind
 	e.main = self
+	e.home = pos
+	e.gold_drop = _gold_for(kind)
 	add_child(e)
-	var ang := randf() * TAU
-	e.global_position = Vector3(cos(ang) * dist, 3.0, sin(ang) * dist)
+	e.global_position = pos + Vector3(0, 3, 0)
 	alive += 1
 
-func on_enemy_killed() -> void:
+func _gold_for(kind: int) -> int:
+	match kind:
+		GameEnemy.Kind.BRUTE: return 22
+		GameEnemy.Kind.BOSS: return 200
+		GameEnemy.Kind.ARCHER: return 10
+		GameEnemy.Kind.SPEARMAN: return 10
+		_: return 8
+
+func _spawn_pickups() -> void:
+	for i in range(11):
+		_make_pickup("gold", randf_range(12, 32), _rand_spot())
+	_make_pickup("weapon", 12.0, _rand_spot())
+	_make_pickup("weapon", 22.0, _rand_spot())
+	_make_pickup("armor", 0.10, _rand_spot())
+	_make_pickup("armor", 0.14, _rand_spot())
+	_make_pickup("heal", 40.0, _rand_spot())
+
+func _rand_spot() -> Vector3:
+	var a := randf() * TAU
+	var d := randf_range(22.0, 88.0)
+	return Vector3(cos(a) * d, 1.0, sin(a) * d)
+
+func _make_pickup(kind: String, value: float, pos: Vector3) -> void:
+	var pk := GamePickup.new()
+	pk.kind = kind
+	pk.value = value
+	pk.main = self
+	add_child(pk)
+	pk.global_position = pos
+
+func on_enemy_killed(pos: Vector3, gold: int) -> void:
 	kills += 1
 	alive -= 1
-	if alive <= 0:
-		spawn_timer = 2.5
+	if player:
+		player.add_gold(gold)
+	if randf() < 0.35:
+		_make_pickup("gold", randf_range(6, 16), pos + Vector3(0, 1, 0))
+	if boss_defeated:
+		_win()
 
 func on_boss_killed() -> void:
 	boss_defeated = true
+	show_toast("Воевода повержен! Новгород свободен!")
+
+func show_toast(text: String) -> void:
+	if controls:
+		controls.toast = text
+		controls.toast_t = 2.5
+
+func buy(index: int) -> void:
+	if index < 0 or index >= shop.size():
+		return
+	var item = shop[index]
+	if player.gold < item["price"]:
+		show_toast("Не хватает золота")
+		return
+	player.gold -= item["price"]
+	match item["type"]:
+		"heal": player.heal(item["value"])
+		"weapon": player.add_dmg(item["value"])
+		"armor": player.add_armor(item["value"])
+		"maxhp": player.add_maxhp(item["value"])
+	show_toast("Куплено: " + item["name"])
 
 func _process(delta: float) -> void:
 	_update_daynight(delta)
@@ -385,12 +456,7 @@ func _process(delta: float) -> void:
 	if controls and player:
 		controls.hp_frac = clampf(player.hp / player.max_hp, 0.0, 1.0)
 		controls.kills = kills
-		controls.wave = wave
-		controls.alive = alive
-		controls.boss_present = boss_spawned and not boss_defeated
-		controls.dbg_ecount = get_tree().get_nodes_in_group("enemy").size()
-		var fe = get_tree().get_first_node_in_group("enemy")
-		controls.dbg_e0 = str(fe.global_position.round()) if fe else "none"
+		controls.gold = player.gold
 
 	match state:
 		"menu":
@@ -398,21 +464,40 @@ func _process(delta: float) -> void:
 			if c >= 0:
 				start_game(c)
 		"play":
+			_update_interaction()
 			if player.hp <= 0.0:
 				_game_over()
 				return
-			if alive <= 0 and spawn_timer > 0.0:
-				spawn_timer -= delta
-				if spawn_timer <= 0.0:
-					if boss_defeated:
-						_win()
-					elif wave >= WAVES_BEFORE_BOSS and not boss_spawned:
-						_spawn_boss()
-					else:
-						_spawn_wave()
+			if controls.consume_interact() and near_npc != null:
+				_open_shop()
+		"shop":
+			var bi: int = controls.consume_buy()
+			if bi >= 0:
+				buy(bi)
+			if controls.consume_close():
+				state = "play"
+				controls.state = 1
 		"gameover", "win":
 			if controls.consume_restart():
 				_to_menu()
+
+func _update_interaction() -> void:
+	near_npc = null
+	var best := 5.0
+	for n in get_tree().get_nodes_in_group("npc"):
+		var d: float = n.global_position.distance_to(player.global_position)
+		if d < best:
+			best = d
+			near_npc = n
+	controls.can_interact = near_npc != null
+
+func _open_shop() -> void:
+	var names := []
+	for it in shop:
+		names.append("%s — %d з." % [it["name"], it["price"]])
+	controls.shop_names = names
+	state = "shop"
+	controls.state = 4
 
 func _game_over() -> void:
 	state = "gameover"
