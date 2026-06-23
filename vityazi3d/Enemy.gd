@@ -1,7 +1,7 @@
 extends CharacterBody3D
 class_name GameEnemy
 
-enum Kind { RAIDER, SPEARMAN, ARCHER, BRUTE, BOSS }
+enum Kind { RAIDER, SPEARMAN, ARCHER, BRUTE, BOSS, MONGOL, MONGOL_ARCHER, MONGOL_HEAVY, KHAN }
 
 var kind: int = Kind.RAIDER
 var main
@@ -51,6 +51,8 @@ func _ready() -> void:
 	add_child(col)
 
 	_build_model()
+	if kind == Kind.MONGOL or kind == Kind.MONGOL_ARCHER or kind == Kind.MONGOL_HEAVY or kind == Kind.KHAN:
+		_add_horde_gear(ch)
 	_build_hpbar(ch)
 
 func _apply_kind() -> void:
@@ -77,6 +79,22 @@ func _apply_kind() -> void:
 			hp = 650; speed = 3.0; dmg = 28; reach = 3.1; atk_cd_time = 1.4; mscale = 1.5
 			path = "res://assets/models/Knight.glb"; show = ["2H_Sword", "Knight_Helmet", "Knight_Cape"]
 			attack_anim = "2H_Melee_Attack_Chop"
+		Kind.MONGOL:
+			hp = 150; speed = 4.7; dmg = 23; reach = 2.4; atk_cd_time = 1.0; mscale = 0.85
+			path = "res://assets/models/Barbarian.glb"; show = ["1H_Axe", "Barbarian_Round_Shield"]
+			attack_anim = "1H_Melee_Attack_Chop"
+		Kind.MONGOL_ARCHER:
+			hp = 95; speed = 4.2; dmg = 17; reach = 18.0; atk_cd_time = 1.5; ranged = true; mscale = 0.82
+			path = "res://assets/models/Rogue.glb"; show = ["2H_Crossbow"]
+			attack_anim = "2H_Ranged_Shoot"
+		Kind.MONGOL_HEAVY:
+			hp = 340; speed = 2.9; dmg = 36; reach = 3.0; atk_cd_time = 1.5; mscale = 1.18
+			path = "res://assets/models/Barbarian.glb"; show = ["2H_Axe", "Barbarian_Hat"]
+			attack_anim = "2H_Melee_Attack_Chop"
+		Kind.KHAN:
+			hp = 2400; speed = 3.3; dmg = 50; reach = 3.5; atk_cd_time = 1.15; mscale = 2.4
+			path = "res://assets/models/Knight.glb"; show = ["2H_Sword", "Knight_Helmet", "Knight_Cape"]
+			attack_anim = "2H_Melee_Attack_Chop"
 	_model_path = path
 	_show = show
 
@@ -99,6 +117,49 @@ func _build_model() -> void:
 				anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
 		cur_anim = "Idle"
 		anim.play("Idle")
+
+# iconic pointed Tatar/Mongol helmet + horde banner so the eastern army reads at a glance
+func _add_horde_gear(ch: float) -> void:
+	var khan := kind == Kind.KHAN
+	var head_y := ch * 0.92
+	# pointed conical helmet
+	var hat := MeshInstance3D.new()
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = (0.34 if khan else 0.26)
+	cone.height = (0.7 if khan else 0.5)
+	hat.mesh = cone
+	var hm := StandardMaterial3D.new()
+	hm.albedo_color = Color(0.78, 0.66, 0.22) if khan else Color(0.32, 0.28, 0.22)
+	hm.metallic = 0.7; hm.roughness = 0.35
+	hat.material_override = hm
+	hat.position = Vector3(0, head_y + (0.36 if khan else 0.26), 0)
+	add_child(hat)
+	# fur/cloth brim
+	var brim := MeshInstance3D.new()
+	var bc := CylinderMesh.new(); bc.top_radius = (0.36 if khan else 0.28); bc.bottom_radius = (0.36 if khan else 0.28); bc.height = 0.12
+	brim.mesh = bc
+	brim.material_override = _flat_e(Color(0.45, 0.12, 0.10) if khan else Color(0.3, 0.2, 0.12))
+	brim.position = Vector3(0, head_y + 0.06, 0)
+	add_child(brim)
+	# back banner with a horsetail tug
+	var pole := MeshInstance3D.new()
+	var pm := CylinderMesh.new(); pm.top_radius = 0.04; pm.bottom_radius = 0.05; pm.height = (3.6 if khan else 2.6)
+	pole.mesh = pm; pole.material_override = _flat_e(Color(0.3, 0.22, 0.14))
+	pole.position = Vector3(-0.3 if not khan else -0.5, (3.6 if khan else 2.6) * 0.5, -0.35)
+	add_child(pole)
+	var flag := MeshInstance3D.new()
+	var fb := BoxMesh.new(); fb.size = Vector3(0.7 if khan else 0.5, 0.45, 0.04)
+	flag.mesh = fb
+	flag.material_override = _flat_e(Color(0.7, 0.12, 0.10) if khan else Color(0.5, 0.35, 0.12))
+	flag.position = Vector3((-0.3 if not khan else -0.5) + (0.4 if khan else 0.3), (3.4 if khan else 2.5), -0.35)
+	add_child(flag)
+
+func _flat_e(c: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = 1.0
+	return m
 
 func _is_equip(n: String) -> bool:
 	for k in EQUIP_KEYS:
@@ -168,7 +229,7 @@ func _physics_process(delta: float) -> void:
 					attack_cd = atk_cd_time
 					player.take_damage(dmg)
 					_play_attack()
-					if (kind == Kind.BRUTE or kind == Kind.BOSS) and player.has_method("knockback"):
+					if kind in [Kind.BRUTE, Kind.BOSS, Kind.MONGOL_HEAVY, Kind.KHAN] and player.has_method("knockback"):
 						player.knockback((player.global_position - global_position).normalized(), 7.0)
 	move_and_slide()
 	_update_anim(moving)
@@ -202,12 +263,14 @@ func take_damage(d: float) -> void:
 	var player = get_tree().get_first_node_in_group("player")
 	if player:
 		var away: Vector3 = (global_position - player.global_position).normalized()
-		velocity += away * (2.0 if kind == Kind.BOSS else 4.0)
+		velocity += away * (1.5 if (kind == Kind.BOSS or kind == Kind.KHAN) else 4.0)
 	if hp <= 0.0:
 		Sfx.enemy_die()
 		if main:
 			if kind == Kind.BOSS and main.has_method("on_boss_killed"):
 				main.on_boss_killed()
+			if kind == Kind.KHAN and main.has_method("on_khan_killed"):
+				main.on_khan_killed()
 			main.on_enemy_killed(global_position, gold_drop)
 		queue_free()
 

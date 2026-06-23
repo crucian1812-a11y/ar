@@ -37,6 +37,13 @@ var village_centers := [
 
 var flat_zones := []          # [{"pos":Vector3,"r":float}] built in _ready
 
+# Сарай-Бату — вражеская столица орды (открывается после всех заданий)
+const SARAY_POS := Vector3(330, 0, 300)
+const SARAY_FLAT := 56.0
+var saray_unlocked := false
+var saray_barrier: Node3D = null
+var saray_near := false
+
 var state := "menu"            # menu / play / shop / gameover / win
 var kills := 0
 var alive := 0
@@ -97,6 +104,7 @@ func _ready() -> void:
 		_build_city(c["pos"], c["name"])
 	_build_villages()
 	_build_roads()
+	_build_saray_structures()
 	_spawn_player()
 	_setup_ui()
 	state = "menu"
@@ -111,6 +119,7 @@ func _build_flat_zones() -> void:
 		flat_zones.append({"pos": c["pos"], "r": CITY_FLAT})
 	for vc in village_centers:
 		flat_zones.append({"pos": vc, "r": VILLAGE_FLAT})
+	flat_zones.append({"pos": SARAY_POS, "r": SARAY_FLAT})
 
 func _run_selftest() -> void:
 	start_game(0)
@@ -129,6 +138,16 @@ func _run_selftest() -> void:
 	player.equip_weapon(player.owned_weapons[0])
 	_refresh_inv()
 	print("SELFTEST inv slots=%d bag=%d dmg=%d" % [controls.inv_slots.size(), controls.inv_bag.size(), player.total_dmg()])
+	# verify Сарай-Бату horde + gate unlock
+	var khans := 0
+	for e in get_tree().get_nodes_in_group("enemy"):
+		if e.kind == GameEnemy.Kind.KHAN:
+			khans += 1
+	var barrier_before: bool = is_instance_valid(saray_barrier)
+	quest_idx = quests.size()
+	_update_saray()
+	print("SELFTEST khan=%d barrier_before=%s unlocked=%s barrier_after=%s" % [
+		khans, str(barrier_before), str(saray_unlocked), str(is_instance_valid(saray_barrier))])
 	get_tree().quit(0 if get_tree().get_nodes_in_group("enemy").size() > 0 else 1)
 
 func terrain_height(x: float, z: float) -> float:
@@ -472,6 +491,127 @@ func _make_npc(pos: Vector3, kind := "merchant") -> void:
 	add_child(npc)
 	npc.global_position = pos
 
+# ---------------- Сарай-Бату (orda capital) ----------------
+
+func _build_saray_structures() -> void:
+	var c := SARAY_POS
+	# central khan's pavilion
+	_khan_tent(c + Vector3(0, 0, -6))
+	# ring of yurts
+	var n := 9
+	for i in range(n):
+		var a := TAU * float(i) / float(n)
+		_yurt(c + Vector3(cos(a) * 24.0, 0, sin(a) * 24.0), 1.0)
+	for i in range(6):
+		var a2 := randf() * TAU
+		var d := randf_range(10.0, 20.0)
+		_yurt(c + Vector3(cos(a2) * d, 0, sin(a2) * d), randf_range(0.7, 1.0))
+	# horde banners around the camp
+	for i in range(8):
+		var ab := TAU * float(i) / 8.0
+		_horde_banner(c + Vector3(cos(ab) * 34.0, 0, sin(ab) * 34.0))
+	# spiked palisade ring (decor + solid)
+	var seg := 28
+	var gate := atan2((Vector3.ZERO - c).z, (Vector3.ZERO - c).x)
+	for i in range(seg):
+		var a3 := TAU * float(i) / float(seg)
+		if absf(_angdiff(a3, gate)) < 0.28:
+			continue
+		var wp := c + Vector3(cos(a3) * 40.0, 0, sin(a3) * 40.0)
+		_palisade(wp, atan2(cos(a3), sin(a3)))
+
+func _yurt(pos: Vector3, sc: float) -> void:
+	var root := Node3D.new(); root.position = pos; root.rotate_y(randf() * TAU); add_child(root)
+	var base := MeshInstance3D.new()
+	var cm := CylinderMesh.new(); cm.top_radius = 1.6 * sc; cm.bottom_radius = 1.7 * sc; cm.height = 1.8 * sc
+	base.mesh = cm; base.material_override = _flat(Color(0.72, 0.68, 0.6)); base.position = Vector3(0, 0.9 * sc, 0)
+	root.add_child(base)
+	var dome := MeshInstance3D.new()
+	var sm := SphereMesh.new(); sm.radius = 1.7 * sc; sm.height = 1.7 * sc
+	dome.mesh = sm; dome.material_override = _flat(Color(0.66, 0.62, 0.54)); dome.position = Vector3(0, 1.8 * sc, 0)
+	root.add_child(dome)
+	# door flap
+	var door := MeshInstance3D.new()
+	var db := BoxMesh.new(); db.size = Vector3(0.7 * sc, 1.1 * sc, 0.08)
+	door.mesh = db; door.material_override = _flat(Color(0.45, 0.2, 0.14)); door.position = Vector3(0, 0.6 * sc, 1.68 * sc)
+	root.add_child(door)
+	_solid(root, Vector3(3.2 * sc, 1.8 * sc, 3.2 * sc), Vector3(0, 0.9 * sc, 0))
+
+func _khan_tent(pos: Vector3) -> void:
+	var root := Node3D.new(); root.position = pos; add_child(root)
+	var base := MeshInstance3D.new()
+	var cm := CylinderMesh.new(); cm.top_radius = 3.4; cm.bottom_radius = 3.6; cm.height = 3.0
+	base.mesh = cm; base.material_override = _flat(Color(0.5, 0.12, 0.10)); base.position = Vector3(0, 1.5, 0)
+	root.add_child(base)
+	var dome := MeshInstance3D.new()
+	var sm := SphereMesh.new(); sm.radius = 3.5; sm.height = 3.6
+	dome.mesh = sm; dome.material_override = _flat(Color(0.42, 0.10, 0.08)); dome.position = Vector3(0, 3.0, 0)
+	root.add_child(dome)
+	# golden finial
+	var fin := MeshInstance3D.new()
+	var fc := CylinderMesh.new(); fc.top_radius = 0.0; fc.bottom_radius = 0.5; fc.height = 1.4
+	fin.mesh = fc
+	var gm := _flat(Color(0.85, 0.69, 0.22)); gm.metallic = 0.7; gm.roughness = 0.25
+	fin.material_override = gm; fin.position = Vector3(0, 5.4, 0)
+	root.add_child(fin)
+	_solid(root, Vector3(6.8, 3.0, 6.8), Vector3(0, 1.5, 0))
+
+func _horde_banner(pos: Vector3) -> void:
+	var root := Node3D.new(); root.position = pos; add_child(root)
+	var pole := MeshInstance3D.new()
+	var pm := CylinderMesh.new(); pm.top_radius = 0.06; pm.bottom_radius = 0.08; pm.height = 4.2
+	pole.mesh = pm; pole.material_override = _flat(Color(0.3, 0.22, 0.14)); pole.position = Vector3(0, 2.1, 0)
+	root.add_child(pole)
+	var flag := MeshInstance3D.new()
+	var fb := BoxMesh.new(); fb.size = Vector3(0.06, 1.1, 1.5)
+	flag.mesh = fb; flag.material_override = _flat(Color(0.7, 0.12, 0.10)); flag.position = Vector3(0, 3.6, 0.75)
+	root.add_child(flag)
+
+func _palisade(pos: Vector3, yaw: float) -> void:
+	var root := Node3D.new(); root.position = pos; root.rotation.y = yaw; add_child(root)
+	var w := MeshInstance3D.new()
+	var bm := BoxMesh.new(); bm.size = Vector3(9.2, 4.0, 0.7)
+	w.mesh = bm; w.material_override = _flat(Color(0.34, 0.26, 0.18)); w.position = Vector3(0, 2.0, 0)
+	root.add_child(w)
+	for k in [-3.0, 0.0, 3.0]:
+		var spike := MeshInstance3D.new()
+		var sc := CylinderMesh.new(); sc.top_radius = 0.0; sc.bottom_radius = 0.45; sc.height = 1.1
+		spike.mesh = sc; spike.material_override = _flat(Color(0.30, 0.23, 0.16)); spike.position = Vector3(k, 4.4, 0)
+		root.add_child(spike)
+	_solid(root, Vector3(9.2, 4.0, 0.7), Vector3(0, 2.0, 0))
+
+func _rebuild_saray_barrier() -> void:
+	if is_instance_valid(saray_barrier):
+		saray_barrier.queue_free()
+	saray_barrier = Node3D.new()
+	add_child(saray_barrier)
+	var c := SARAY_POS
+	var n := 18
+	for i in range(n):
+		var a := TAU * float(i) / float(n)
+		var wp := c + Vector3(cos(a) * 48.0, 0, sin(a) * 48.0)
+		# translucent magical wall
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new(); bm.size = Vector3(18.0, 9.0, 0.6)
+		mi.mesh = bm
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(0.7, 0.1, 0.12, 0.28)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.emission_enabled = true; m.emission = Color(0.8, 0.15, 0.12); m.emission_energy_multiplier = 0.6
+		mi.material_override = m
+		mi.position = wp + Vector3(0, 4.5, 0)
+		mi.rotation.y = atan2(cos(a), sin(a))
+		saray_barrier.add_child(mi)
+		# collision
+		var sb := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new(); bs.size = Vector3(18.0, 9.0, 0.6)
+		cs.shape = bs
+		sb.position = wp + Vector3(0, 4.5, 0)
+		sb.rotation.y = atan2(cos(a), sin(a))
+		sb.add_child(cs)
+		saray_barrier.add_child(sb)
+
 func _angdiff(a: float, b: float) -> float:
 	return fmod(a - b + PI, TAU) - PI
 
@@ -730,6 +870,8 @@ func start_game(id: int) -> void:
 	kills = 0; alive = 0
 	boss_defeated = false
 	current_region = ""
+	saray_unlocked = false
+	saray_near = false
 	quest_idx = 0
 	quest_active = false
 	kills_base = 0
@@ -737,6 +879,7 @@ func start_game(id: int) -> void:
 	pickups_base = 0
 	state = "play"
 	controls.state = 1
+	_rebuild_saray_barrier()
 	_spawn_world_enemies()
 	_spawn_pickups()
 
@@ -759,7 +902,23 @@ func _spawn_world_enemies() -> void:
 	]
 	for c in camps:
 		_spawn_camp(c, false)
-	_spawn_camp(Vector3(-300, 0, -250), true)   # boss fortress (far landmark)
+	_spawn_camp(Vector3(-300, 0, -250), true)   # воевода fortress (mid boss)
+	_spawn_saray_horde()
+
+func _spawn_saray_horde() -> void:
+	var c := SARAY_POS
+	# a large eastern army garrisoning the camp
+	for i in range(10):
+		var a := TAU * float(i) / 10.0
+		_make_enemy(GameEnemy.Kind.MONGOL, c + Vector3(cos(a) * 20.0, 0, sin(a) * 20.0))
+	for i in range(6):
+		var a2 := TAU * float(i) / 6.0
+		_make_enemy(GameEnemy.Kind.MONGOL_ARCHER, c + Vector3(cos(a2) * 28.0, 0, sin(a2) * 28.0))
+	for i in range(4):
+		var a3 := TAU * float(i) / 4.0
+		_make_enemy(GameEnemy.Kind.MONGOL_HEAVY, c + Vector3(cos(a3) * 12.0, 0, sin(a3) * 12.0))
+	# Мамай — super-boss in front of his pavilion
+	_make_enemy(GameEnemy.Kind.KHAN, c + Vector3(0, 0, 4))
 
 func _spawn_camp(center: Vector3, boss: bool) -> void:
 	var n := randi_range(3, 5)
@@ -790,6 +949,10 @@ func _gold_for(kind: int) -> int:
 		GameEnemy.Kind.BOSS: return 200
 		GameEnemy.Kind.ARCHER: return 10
 		GameEnemy.Kind.SPEARMAN: return 10
+		GameEnemy.Kind.MONGOL: return 24
+		GameEnemy.Kind.MONGOL_ARCHER: return 26
+		GameEnemy.Kind.MONGOL_HEAVY: return 45
+		GameEnemy.Kind.KHAN: return 600
 		_: return 8
 
 func _spawn_pickups() -> void:
@@ -831,12 +994,14 @@ func on_enemy_killed(pos: Vector3, gold: int) -> void:
 		player.add_gold(gold)
 	if randf() < 0.35:
 		_make_pickup("gold", randf_range(6, 16), pos + Vector3(0, 1, 0))
-	if boss_defeated:
-		_win()
 
 func on_boss_killed() -> void:
 	boss_defeated = true
-	show_toast("Воевода повержен! Новгород свободен!")
+	show_toast("Воевода повержен! Но главный враг — Мамай в Сарай-Бату.")
+
+func on_khan_killed() -> void:
+	# defeating Мамай is the true victory
+	_win()
 
 func show_toast(text: String) -> void:
 	if controls:
@@ -895,6 +1060,7 @@ func _process(delta: float) -> void:
 		"play":
 			_update_interaction()
 			_update_region()
+			_update_saray()
 			if player.hp <= 0.0:
 				_game_over()
 				return
@@ -952,11 +1118,28 @@ func _update_region() -> void:
 		if player.global_position.distance_to(c["pos"]) < 46.0:
 			rname = c["name"]
 			break
+	if rname == "" and player.global_position.distance_to(SARAY_POS) < 52.0:
+		rname = "Сарай-Бату"
 	if rname != current_region:
 		current_region = rname
-		if rname != "":
+		if rname != "" and rname != "Сарай-Бату":
 			show_toast("Вы прибыли в город: " + rname)
 	controls.region = current_region
+
+func _update_saray() -> void:
+	if saray_unlocked:
+		return
+	# unlock once every villager quest is complete (grants the super-weapons)
+	if quest_idx >= quests.size():
+		saray_unlocked = true
+		if is_instance_valid(saray_barrier):
+			saray_barrier.queue_free()
+		show_toast("Врата Сарай-Бату пали! Иди и сокруши Мамая!")
+		return
+	var near: bool = player.global_position.distance_to(SARAY_POS) < 95.0
+	if near and not saray_near:
+		show_toast("Сарай-Бату под защитой. Сначала выполни все задания витязей.")
+	saray_near = near
 
 func _open_inventory() -> void:
 	_refresh_inv()
