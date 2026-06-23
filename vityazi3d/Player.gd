@@ -22,7 +22,12 @@ var WEAPONS := [
 	{"name": "Кинжал", "model": "res://assets/weapons/dagger.gltf", "anim": "1H_Melee_Attack_Stab", "dmg": 34.0, "reach": 2.3, "cd": 0.38, "two": false},
 	{"name": "Копьё", "model": "res://assets/weapons/staff.gltf", "anim": "2H_Melee_Attack_Stab", "dmg": 60.0, "reach": 3.5, "cd": 0.6, "two": true},
 	{"name": "Арбалет", "model": "res://assets/weapons/crossbow_2handed.gltf", "anim": "2H_Ranged_Shoot", "dmg": 44.0, "reach": 22.0, "cd": 1.0, "two": true, "ranged": true},
+	# --- unique rewards (quests only) ---
+	{"name": "Меч-кладенец", "model": "res://assets/weapons/sword_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 120.0, "reach": 3.3, "cd": 0.7, "two": true, "rare": true, "tint": Color(1.0, 0.84, 0.30)},
+	{"name": "Секира Перуна", "model": "res://assets/weapons/axe_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 140.0, "reach": 3.0, "cd": 0.85, "two": true, "rare": true, "tint": Color(0.65, 0.85, 1.0)},
+	{"name": "Лук Соловья", "model": "res://assets/weapons/crossbow_2handed.gltf", "anim": "2H_Ranged_Shoot", "dmg": 82.0, "reach": 26.0, "cd": 0.8, "two": true, "ranged": true, "rare": true, "tint": Color(0.55, 1.0, 0.55)},
 ]
+const UNARMED := {"name": "Кулаки", "dmg": 14.0, "reach": 2.0, "cd": 0.5, "anim": "1H_Melee_Attack_Slice_Diagonal"}
 var SHIELDS := [
 	{"name": "Без щита", "model": "", "armor": 0.0},
 	{"name": "Круглый щит", "model": "res://assets/weapons/shield_round.gltf", "armor": 0.10},
@@ -40,7 +45,8 @@ var owned_shields := [0]
 var equipped_shield := 0
 var helmet_owned := false
 var helmet_on := false
-var armor_tier := 0
+var owned_armors := []      # tiers the player owns (1 = кольчуга, 2 = латы)
+var equipped_armor := 0     # 0 = none
 var armor := 0.0
 
 # combat
@@ -110,7 +116,8 @@ func set_character(id: int) -> void:
 	equipped_shield = 0
 	helmet_owned = false
 	helmet_on = false
-	armor_tier = 0
+	owned_armors = []
+	equipped_armor = 0
 	match id:
 		0: owned_weapons = [0]; equipped_weapon = 0
 		1: owned_weapons = [2]; equipped_weapon = 2
@@ -163,6 +170,16 @@ func own_shield(i: int) -> void:
 
 func equip_weapon(i: int) -> void:
 	equipped_weapon = i
+	if i < 0:
+		# unarmed
+		atk_dmg = UNARMED["dmg"]; atk_reach = UNARMED["reach"]; atk_cd_time = UNARMED["cd"]
+		attack_anim = UNARMED["anim"]; ranged = false
+		if weapon_holder:
+			for c in weapon_holder.get_children():
+				c.queue_free()
+		_refresh_shield()
+		_recalc_armor()
+		return
 	var w = WEAPONS[i]
 	atk_dmg = w["dmg"]; atk_reach = w["reach"]; atk_cd_time = w["cd"]; attack_anim = w["anim"]
 	ranged = w.get("ranged", false)
@@ -170,9 +187,28 @@ func equip_weapon(i: int) -> void:
 		for c in weapon_holder.get_children():
 			c.queue_free()
 		if w["model"] != "":
-			weapon_holder.add_child(load(w["model"]).instantiate())
+			var inst = load(w["model"]).instantiate()
+			weapon_holder.add_child(inst)
+			if w.get("rare", false):
+				_tint(inst, w.get("tint", Color(1.0, 0.85, 0.3)))
 	_refresh_shield()
 	_recalc_armor()
+
+func unequip_weapon() -> void:
+	equip_weapon(-1)
+
+func _tint(node: Node, col: Color) -> void:
+	if node is MeshInstance3D:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = col
+		m.metallic = 0.85
+		m.roughness = 0.25
+		m.emission_enabled = true
+		m.emission = col
+		m.emission_energy_multiplier = 0.45
+		node.material_override = m
+	for c in node.get_children():
+		_tint(c, col)
 
 func equip_shield(i: int) -> void:
 	equipped_shield = i
@@ -196,12 +232,28 @@ func toggle_helmet() -> void:
 		helmet_node.visible = helmet_on
 	_recalc_armor()
 
+func own_armor(t: int) -> void:
+	t = clampi(t, 1, ARMOR_TIERS.size() - 1)
+	if not (t in owned_armors):
+		owned_armors.append(t)
+
 func set_armor_tier(t: int) -> void:
-	armor_tier = clampi(t, 0, ARMOR_TIERS.size() - 1)
+	# grant ownership and equip it
+	if t >= 1:
+		own_armor(t)
+	equipped_armor = clampi(t, 0, ARMOR_TIERS.size() - 1)
+	_recalc_armor()
+
+func equip_armor(t: int) -> void:
+	equipped_armor = clampi(t, 0, ARMOR_TIERS.size() - 1)
+	_recalc_armor()
+
+func unequip_armor() -> void:
+	equipped_armor = 0
 	_recalc_armor()
 
 func _recalc_armor() -> void:
-	var a: float = ARMOR_TIERS[armor_tier]
+	var a: float = ARMOR_TIERS[equipped_armor]
 	if helmet_on:
 		a += 0.06
 	var two: bool = WEAPONS[equipped_weapon].get("two", false)
@@ -330,7 +382,9 @@ func knockback(dir: Vector3, force: float) -> void:
 func add_gold(n: int) -> void: gold += n
 func add_dmg(n: float) -> void: dmg_bonus += n
 func add_armor(n: float) -> void:
-	armor_tier = mini(armor_tier + 1, ARMOR_TIERS.size() - 1)
+	var t: int = mini(equipped_armor + 1, ARMOR_TIERS.size() - 1)
+	own_armor(t)
+	equipped_armor = t
 	_recalc_armor()
 func heal(n: float) -> void: hp = minf(hp + n, max_hp)
 func add_maxhp(n: float) -> void: max_hp += n; hp = max_hp

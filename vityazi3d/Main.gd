@@ -40,12 +40,12 @@ var shop := [
 	{"name": "Латный доспех (броня)", "price": 200, "kind": "armortier", "v": 2},
 	{"name": "Эликсир силы (+40 макс HP)", "price": 120, "kind": "maxhp", "v": 40.0},
 ]
-var _inv_actions: Array = []
+var _bag_items: Array = []   # parallel to controls.inv_bag: [{"kind","v"}]
 
 var quests := [
-	{"title": "Очистка дорог", "desc": "Победи 6 врагов в округе.", "type": "kills", "target": 6, "reward": 70},
-	{"title": "Казна княжества", "desc": "Накопи 200 золота.", "type": "gold", "target": 200, "reward": 90},
-	{"title": "Древние реликвии", "desc": "Собери 5 артефактов.", "type": "pickups", "target": 5, "reward": 120},
+	{"title": "Очистка дорог", "desc": "Победи 6 врагов в округе.", "type": "kills", "target": 6, "reward": 70, "weapon": 7, "weapon_name": "Меч-кладенец"},
+	{"title": "Казна княжества", "desc": "Накопи 200 золота.", "type": "gold", "target": 200, "reward": 90, "weapon": 9, "weapon_name": "Лук Соловья"},
+	{"title": "Древние реликвии", "desc": "Собери 5 артефактов.", "type": "pickups", "target": 5, "reward": 120, "weapon": 8, "weapon_name": "Секира Перуна"},
 ]
 var quest_idx := 0
 var quest_active := false
@@ -65,6 +65,7 @@ func _ready() -> void:
 	_build_floor()
 	_build_water()
 	_scatter_trees(260)
+	_scatter_ground_detail()
 	_build_town()
 	_build_villages()
 	_spawn_player()
@@ -83,6 +84,15 @@ func _run_selftest() -> void:
 		get_tree().get_nodes_in_group("npc").size(),
 		get_tree().get_nodes_in_group("pickup").size(),
 		player.gold, str(player.global_position)])
+	# exercise equipment / inventory code paths
+	player.own_weapon(7); player.equip_weapon(7)        # rare sword (tint path)
+	player.unequip_weapon()
+	player.own_shield(1); player.equip_shield(1); player.equip_shield(0)
+	player.own_armor(2); player.equip_armor(2); player.unequip_armor()
+	player.helmet_owned = true; player.toggle_helmet(); player.toggle_helmet()
+	player.equip_weapon(player.owned_weapons[0])
+	_refresh_inv()
+	print("SELFTEST inv slots=%d bag=%d dmg=%d" % [controls.inv_slots.size(), controls.inv_bag.size(), player.total_dmg()])
 	get_tree().quit(0 if get_tree().get_nodes_in_group("enemy").size() > 0 else 1)
 
 func terrain_height(x: float, z: float) -> float:
@@ -251,6 +261,83 @@ func _make_tree(pos: Vector3) -> void:
 	root.rotate_y(randf() * TAU)
 	add_child(root)
 
+# ---- ground clutter (grass tufts, pebbles, flowers) via MultiMesh ----
+func _scatter_ground_detail() -> void:
+	_multimesh_scatter(_grass_blade_mesh(), 3000, 46.0, 200.0, 0.6, 1.5, true)
+	_multimesh_scatter(_pebble_mesh(), 800, 24.0, 205.0, 0.6, 1.6, false)
+	_multimesh_scatter(_flower_mesh(), 420, 50.0, 195.0, 0.7, 1.3, true)
+
+func _multimesh_scatter(mesh: Mesh, count: int, dmin: float, dmax: float, smin: float, smax: float, grass_only: bool) -> void:
+	var xforms := []
+	var tries := 0
+	while xforms.size() < count and tries < count * 5:
+		tries += 1
+		var x := randf_range(-WORLD + 10, WORLD - 10)
+		var z := randf_range(-WORLD + 10, WORLD - 10)
+		var d := Vector2(x, z).length()
+		if d < dmin or d > dmax:
+			continue
+		var y := terrain_height(x, z)
+		if y < WATER_Y + 1.0:
+			continue
+		if grass_only:
+			# skip the dirt rings around villages
+			var skip := false
+			for vc in village_centers:
+				if Vector2(x - vc.x, z - vc.z).length() < 14.0:
+					skip = true
+					break
+			if skip:
+				continue
+		var b := Basis().rotated(Vector3.UP, randf() * TAU).scaled(Vector3.ONE * randf_range(smin, smax))
+		xforms.append(Transform3D(b, Vector3(x, y, z)))
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = xforms.size()
+	for i in range(xforms.size()):
+		mm.set_instance_transform(i, xforms[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	add_child(mmi)
+
+func _grass_blade_mesh() -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var col := Color(0.34, 0.52, 0.24)
+	var coltip := Color(0.46, 0.62, 0.30)
+	# three crossed blades
+	for k in range(3):
+		var a := float(k) * 2.1
+		var dx := cos(a) * 0.08
+		var dz := sin(a) * 0.08
+		st.set_color(col); st.add_vertex(Vector3(-dx, 0, -dz))
+		st.set_color(col); st.add_vertex(Vector3(dx, 0, dz))
+		st.set_color(coltip); st.add_vertex(Vector3(dz * 0.4, 0.42, -dx * 0.4))
+	st.generate_normals()
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.roughness = 1.0
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	st.set_material(m)
+	return st.commit()
+
+func _pebble_mesh() -> Mesh:
+	var sm := SphereMesh.new()
+	sm.radius = 0.13; sm.height = 0.18
+	sm.radial_segments = 6; sm.rings = 3
+	sm.material = _flat(Color(0.5, 0.48, 0.45))
+	return sm
+
+func _flower_mesh() -> Mesh:
+	var sm := SphereMesh.new()
+	sm.radius = 0.09; sm.height = 0.16
+	sm.radial_segments = 5; sm.rings = 3
+	var m := _flat(Color(0.9, 0.85, 0.35))
+	m.emission_enabled = true; m.emission = Color(0.7, 0.6, 0.2); m.emission_energy_multiplier = 0.3
+	sm.material = m
+	return sm
+
 func _build_town() -> void:
 	_church(Vector3(0, 0, -4))
 	var ring := 37.0
@@ -270,6 +357,12 @@ func _build_town() -> void:
 		_izba(s)
 	_make_npc(Vector3(8, 0, 4))                 # town merchant
 	_make_npc(Vector3(-8, 0, 4), "quest")       # town quest-giver
+	# torches: flanking the gate, by the church and the square
+	_torch(self, Vector3(cos(gate) * ring - 3, 0, sin(gate) * ring))
+	_torch(self, Vector3(cos(gate) * ring + 3, 0, sin(gate) * ring))
+	_torch(self, Vector3(-5, 0, 1))
+	_torch(self, Vector3(5, 0, 1))
+	_torch(self, Vector3(0, 0, 14))
 
 func _build_villages() -> void:
 	var vi := 0
@@ -280,6 +373,7 @@ func _build_villages() -> void:
 			oi += 1
 		# a village well in the middle
 		_well(center)
+		_torch(self, center + Vector3(-3, 0, 3))
 		_make_npc(center + Vector3(2, 0, 2))
 		# every other village also has a quest-giver
 		if vi % 2 == 1:
@@ -479,6 +573,48 @@ func _izba(pos: Vector3, big := false) -> void:
 	var cbx := BoxMesh.new(); cbx.size = Vector3(0.5, 1.5, 0.5)
 	ch.mesh = cbx; ch.material_override = _flat(Color(0.42, 0.40, 0.40)); ch.position = Vector3(hx * 0.55, hh + 1.7, -hz * 0.4)
 	root.add_child(ch)
+	# log-cabin corner posts
+	var logend := _flat(Color(0.40, 0.29, 0.18))
+	for cx in [-hx, hx]:
+		for cz in [-hz, hz]:
+			var post := MeshInstance3D.new()
+			var pc := CylinderMesh.new(); pc.top_radius = 0.22; pc.bottom_radius = 0.24; pc.height = hh + 0.1
+			post.mesh = pc; post.material_override = logend; post.position = Vector3(cx, (hh + 0.1) * 0.5, cz)
+			root.add_child(post)
+	# foundation sill
+	var sill := MeshInstance3D.new()
+	var sb := BoxMesh.new(); sb.size = Vector3(hx * 2 + 0.5, 0.4, hz * 2 + 0.5)
+	sill.mesh = sb; sill.material_override = _flat(Color(0.46, 0.45, 0.43)); sill.position = Vector3(0, 0.18, 0)
+	root.add_child(sill)
+	# door slab, swung ajar
+	var door := Node3D.new(); door.position = Vector3(-dw * 0.5, 0, hz); root.add_child(door)
+	door.rotation.y = -0.7
+	var slab := MeshInstance3D.new()
+	var slb := BoxMesh.new(); slb.size = Vector3(dw, 2.0, 0.08)
+	slab.mesh = slb; slab.material_override = _flat(Color(0.34, 0.23, 0.14)); slab.position = Vector3(dw * 0.5, 1.0, 0)
+	door.add_child(slab)
+
+func _torch(parent: Node3D, pos: Vector3) -> void:
+	var root := Node3D.new(); root.position = pos; parent.add_child(root)
+	var pole := MeshInstance3D.new()
+	var pm := CylinderMesh.new(); pm.top_radius = 0.07; pm.bottom_radius = 0.09; pm.height = 2.4
+	pole.mesh = pm; pole.material_override = _flat(Color(0.32, 0.22, 0.14)); pole.position = Vector3(0, 1.2, 0)
+	root.add_child(pole)
+	var flame := MeshInstance3D.new()
+	var fm := SphereMesh.new(); fm.radius = 0.18; fm.height = 0.4
+	flame.mesh = fm
+	var fmat := _flat(Color(1.0, 0.6, 0.2))
+	fmat.emission_enabled = true; fmat.emission = Color(1.0, 0.55, 0.15); fmat.emission_energy_multiplier = 2.0
+	fmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	flame.mesh.material = fmat; flame.position = Vector3(0, 2.5, 0)
+	root.add_child(flame)
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.7, 0.35)
+	light.light_energy = 2.2
+	light.omni_range = 11.0
+	light.position = Vector3(0, 2.6, 0)
+	light.shadow_enabled = false
+	root.add_child(light)
 
 func _flat(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -616,7 +752,7 @@ func _shop_owned(item) -> bool:
 		"weapon": return int(item["v"]) in player.owned_weapons
 		"shield": return int(item["v"]) in player.owned_shields
 		"helmet": return player.helmet_owned
-		"armortier": return player.armor_tier >= int(item["v"])
+		"armortier": return int(item["v"]) in player.owned_armors
 		_: return false
 
 func buy(index: int) -> void:
@@ -635,9 +771,9 @@ func buy(index: int) -> void:
 		"maxhp": player.add_maxhp(item["v"])
 		"weapon": player.own_weapon(int(item["v"])); show_toast("Куплено! Наденьте в снаряжении (☰)")
 		"shield": player.own_shield(int(item["v"])); show_toast("Куплено! Наденьте в снаряжении (☰)")
-		"helmet": player.helmet_owned = true; show_toast("Шлем куплен — наденьте в снаряжении")
-		"armortier": player.set_armor_tier(int(item["v"])); show_toast("Доспех надет")
-	if item["kind"] in ["heal", "maxhp", "armortier"]:
+		"helmet": player.helmet_owned = true; show_toast("Шлем куплен — наденьте в снаряжении (☰)")
+		"armortier": player.own_armor(int(item["v"])); show_toast("Доспех куплен — наденьте в снаряжении (☰)")
+	if item["kind"] in ["heal", "maxhp"]:
 		show_toast("Куплено: " + item["name"])
 	Sfx.buy()
 	_refresh_shop_state()
@@ -673,13 +809,13 @@ func _process(delta: float) -> void:
 			if controls.consume_inventory():
 				_open_inventory()
 		"inv":
-			var ei: int = controls.consume_equip()
-			if ei >= 0 and ei < _inv_actions.size():
-				var a = _inv_actions[ei]
-				match a["t"]:
-					"w": player.equip_weapon(a["v"])
-					"s": player.equip_shield(a["v"])
-					"helm": player.toggle_helmet()
+			var si: int = controls.consume_slot()
+			if si >= 0:
+				_unequip_slot(si)
+				_refresh_inv()
+			var bi2: int = controls.consume_bag()
+			if bi2 >= 0 and bi2 < _bag_items.size():
+				_equip_bag(_bag_items[bi2])
 				_refresh_inv()
 			if controls.consume_close():
 				state = "play"
@@ -719,28 +855,78 @@ func _open_inventory() -> void:
 	controls.state = 5
 
 func _refresh_inv() -> void:
-	var rows := []
-	var flags := []
-	var acts := []
-	rows.append("— ОРУЖИЕ —"); flags.append(false); acts.append({"t": "h"})
+	# --- paper-doll equipment slots (0 weapon, 1 shield, 2 helmet, 3 armor) ---
+	var slots := []
+	# weapon
+	var wname := "—"
+	var wrare := false
+	if player.equipped_weapon >= 0:
+		wname = player.WEAPONS[player.equipped_weapon]["name"]
+		wrare = player.WEAPONS[player.equipped_weapon].get("rare", false)
+	else:
+		wname = "Кулаки"
+	slots.append({"label": "ОРУЖИЕ", "name": wname, "rare": wrare})
+	# shield
+	var sname := "—"
+	if player.equipped_shield >= 1:
+		sname = player.SHIELDS[player.equipped_shield]["name"]
+	slots.append({"label": "ЩИТ", "name": sname, "rare": false})
+	# helmet
+	slots.append({"label": "ШЛЕМ", "name": "Шлем" if player.helmet_on else "—", "rare": false})
+	# armor
+	var aname := "—"
+	if player.equipped_armor >= 1:
+		aname = player.ARMOR_NAMES[player.equipped_armor]
+	slots.append({"label": "ДОСПЕХ", "name": aname, "rare": false})
+	controls.inv_slots = slots
+
+	# --- bag: everything owned but not equipped ---
+	var bag := []
+	var items := []
 	for wi in player.owned_weapons:
-		rows.append("  " + player.WEAPONS[wi]["name"])
-		flags.append(wi == player.equipped_weapon)
-		acts.append({"t": "w", "v": wi})
-	rows.append("— ЩИТ —"); flags.append(false); acts.append({"t": "h"})
+		if wi != player.equipped_weapon:
+			bag.append({"name": player.WEAPONS[wi]["name"], "rare": player.WEAPONS[wi].get("rare", false), "tag": "Оружие"})
+			items.append({"kind": "w", "v": wi})
 	for si in player.owned_shields:
-		rows.append("  " + player.SHIELDS[si]["name"])
-		flags.append(si == player.equipped_shield)
-		acts.append({"t": "s", "v": si})
-	if player.helmet_owned:
-		rows.append("— ПРОЧЕЕ —"); flags.append(false); acts.append({"t": "h"})
-		rows.append("  Шлем"); flags.append(player.helmet_on); acts.append({"t": "helm"})
-	controls.inv_rows = rows
-	controls.inv_flags = flags
-	_inv_actions = acts
-	controls.inv_stats = "Урон: %d    Броня: %d%%    HP: %d/%d    Золото: %d    (доспех: %s)" % [
-		player.total_dmg(), int(player.armor * 100), int(player.hp), int(player.max_hp), player.gold,
-		player.ARMOR_NAMES[player.armor_tier]]
+		if si >= 1 and si != player.equipped_shield:
+			bag.append({"name": player.SHIELDS[si]["name"], "rare": false, "tag": "Щит"})
+			items.append({"kind": "s", "v": si})
+	if player.helmet_owned and not player.helmet_on:
+		bag.append({"name": "Шлем", "rare": false, "tag": "Голова"})
+		items.append({"kind": "helm", "v": 0})
+	for ai in player.owned_armors:
+		if ai != player.equipped_armor:
+			bag.append({"name": player.ARMOR_NAMES[ai], "rare": false, "tag": "Доспех"})
+			items.append({"kind": "armor", "v": ai})
+	controls.inv_bag = bag
+	_bag_items = items
+
+	controls.inv_stats = "Урон: %d     Броня: %d%%     HP: %d/%d     Золото: %d" % [
+		player.total_dmg(), int(player.armor * 100), int(player.hp), int(player.max_hp), player.gold]
+
+func _unequip_slot(slot: int) -> void:
+	match slot:
+		0:
+			if player.equipped_weapon >= 0:
+				player.unequip_weapon()
+		1:
+			if player.equipped_shield >= 1:
+				player.equip_shield(0)
+		2:
+			if player.helmet_on:
+				player.toggle_helmet()
+		3:
+			if player.equipped_armor >= 1:
+				player.unequip_armor()
+
+func _equip_bag(it) -> void:
+	match it["kind"]:
+		"w": player.equip_weapon(int(it["v"]))
+		"s": player.equip_shield(int(it["v"]))
+		"helm":
+			if not player.helmet_on:
+				player.toggle_helmet()
+		"armor": player.equip_armor(int(it["v"]))
 
 func _open_shop() -> void:
 	_refresh_shop_state()
@@ -798,7 +984,11 @@ func _quest_action() -> void:
 	elif _quest_done():
 		player.add_gold(int(q["reward"]))
 		Sfx.quest()
-		show_toast("Награда получена: +%d золота" % int(q["reward"]))
+		if q.has("weapon"):
+			player.own_weapon(int(q["weapon"]))
+			show_toast("Награда: +%d золота и %s! Наденьте в снаряжении (☰)" % [int(q["reward"]), q["weapon_name"]])
+		else:
+			show_toast("Награда получена: +%d золота" % int(q["reward"]))
 		quest_idx += 1
 		quest_active = false
 		_refresh_quest_dialog()
@@ -818,7 +1008,10 @@ func _refresh_quest_dialog() -> void:
 	controls.quest_title = q["title"]
 	controls.quest_desc = q["desc"]
 	if not quest_active:
-		controls.quest_info = "Награда: %d золота" % int(q["reward"])
+		var rw := "Награда: %d золота" % int(q["reward"])
+		if q.has("weapon_name"):
+			rw += " + ✦ %s" % q["weapon_name"]
+		controls.quest_info = rw
 		controls.quest_btn = "Принять"
 	elif _quest_done():
 		controls.quest_info = "Выполнено!  %d/%d  (награда %d з.)" % [_quest_progress(), int(q["target"]), int(q["reward"])]

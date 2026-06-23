@@ -22,13 +22,14 @@ var can_interact := false
 var shop_names: Array = []
 var toast := ""
 var toast_t := 0.0
-# inventory
-var inv_rows: Array = []
-var inv_flags: Array = []
+# inventory (paper-doll + bag, Diablo-style)
+var inv_slots: Array = []   # [{label,name,rare}] order: 0 weapon, 1 shield, 2 helmet, 3 armor
+var inv_bag: Array = []      # [{name,rare,tag}]
 var inv_stats := ""
 var shop_owned: Array = []
 var _inventory := false
-var _equip := -1
+var _slot := -1
+var _bag := -1
 var _dodge := false
 # quests
 var interact_label := "ТОРГОВЛЯ"
@@ -82,8 +83,10 @@ func consume_close() -> bool:
 	var c := _close; _close = false; return c
 func consume_inventory() -> bool:
 	var i := _inventory; _inventory = false; return i
-func consume_equip() -> int:
-	var e := _equip; _equip = -1; return e
+func consume_slot() -> int:
+	var s := _slot; _slot = -1; return s
+func consume_bag() -> int:
+	var b := _bag; _bag = -1; return b
 func consume_dodge() -> bool:
 	var d := _dodge; _dodge = false; return d
 func consume_quest() -> bool:
@@ -95,10 +98,30 @@ func _dodge_r() -> float: return 46.0
 func _inv_btn() -> Vector2:
 	var v := _vp(); return Vector2(v.x - 60.0, 120.0)
 func _inv_r() -> float: return 40.0
-func _inv_row(i: int) -> Rect2:
+func _inv_doll_x() -> float:
 	var p := _shop_panel()
-	var rh := 44.0
-	return Rect2(p.position.x + 20.0, p.position.y + 108.0 + i * (rh + 6.0), p.size.x - 40.0, rh)
+	return p.position.x + p.size.x * 0.25
+
+func _slot_rect(i: int) -> Rect2:
+	var p := _shop_panel()
+	var sx := _inv_doll_x()
+	var top := p.position.y + 96.0
+	match i:
+		0: return Rect2(sx - 182.0, top + 150.0, 116.0, 54.0)   # weapon (left hand)
+		1: return Rect2(sx + 66.0, top + 150.0, 116.0, 54.0)    # shield (right hand)
+		2: return Rect2(sx - 58.0, top + 14.0, 116.0, 54.0)     # helmet (head)
+		3: return Rect2(sx - 58.0, top + 226.0, 116.0, 54.0)    # armor (torso)
+	return Rect2()
+
+func _bag_cell(i: int) -> Rect2:
+	var p := _shop_panel()
+	var cols := 3
+	var bx := p.position.x + p.size.x * 0.52
+	var by := p.position.y + 150.0
+	var cw := 92.0; var ch := 58.0; var gap := 8.0
+	var r := i / cols
+	var c := i % cols
+	return Rect2(bx + c * (cw + gap), by + r * (ch + gap), cw, ch)
 
 # ---- geometry ----
 func _attack_center() -> Vector2:
@@ -180,9 +203,13 @@ func _inv_tap(p: Vector2) -> void:
 	if _shop_close().has_point(p):
 		_close = true
 		return
-	for i in range(inv_rows.size()):
-		if _inv_row(i).has_point(p):
-			_equip = i
+	for i in range(4):
+		if _slot_rect(i).has_point(p):
+			_slot = i
+			return
+	for i in range(inv_bag.size()):
+		if _bag_cell(i).has_point(p):
+			_bag = i
 			return
 
 func _pressed(e: InputEvent) -> bool:
@@ -347,25 +374,58 @@ func _draw_inv() -> void:
 	draw_rect(p, Color(0.10, 0.11, 0.13, 0.97))
 	draw_rect(p, Color(0.85, 0.7, 0.3, 0.9), false, 3.0)
 	if font:
-		draw_string(font, Vector2(p.position.x + 20, p.position.y + 42), "СНАРЯЖЕНИЕ", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(0.95, 0.85, 0.4))
-		draw_string(font, Vector2(p.position.x + 20, p.position.y + 78), inv_stats, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
-		draw_string(font, Vector2(p.position.x + 20, p.position.y + 112), "Оружие (нажми, чтобы взять):", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.8, 0.8, 0.8))
+		draw_string(font, Vector2(p.position.x + 20, p.position.y + 40), "СНАРЯЖЕНИЕ", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(0.95, 0.85, 0.4))
+		draw_string(font, Vector2(p.position.x + 20, p.position.y + 70), inv_stats, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color.WHITE)
 	var cl := _shop_close()
 	draw_rect(cl, Color(0.4, 0.15, 0.13))
 	if font:
 		draw_string(font, cl.position + Vector2(14, 31), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
-	for i in range(inv_rows.size()):
-		var r := _inv_row(i)
-		var equipped: bool = i < inv_flags.size() and inv_flags[i]
-		var label := str(inv_rows[i])
-		var is_header := label.begins_with("—")
-		if not is_header:
-			draw_rect(r, Color(0.22, 0.30, 0.20) if equipped else Color(0.2, 0.19, 0.17))
-			draw_rect(r, Color(0.55, 0.85, 0.45) if equipped else Color(0.5, 0.45, 0.35), false, 2.0)
+
+	# ---- paper-doll silhouette ----
+	var sx := _inv_doll_x()
+	var top := p.position.y + 96.0
+	var bodycol := Color(0.22, 0.24, 0.30, 0.9)
+	draw_circle(Vector2(sx, top + 96), 22.0, bodycol)             # head
+	draw_rect(Rect2(sx - 26, top + 118, 52, 96), bodycol)        # torso
+	draw_rect(Rect2(sx - 44, top + 120, 18, 72), bodycol)        # left arm
+	draw_rect(Rect2(sx + 26, top + 120, 18, 72), bodycol)        # right arm
+	draw_rect(Rect2(sx - 22, top + 214, 18, 64), bodycol)        # left leg
+	draw_rect(Rect2(sx + 4, top + 214, 18, 64), bodycol)         # right leg
+
+	# ---- equipment slots ----
+	for i in range(4):
+		var sd: Dictionary = inv_slots[i] if i < inv_slots.size() else {"label": "", "name": "—", "rare": false}
+		var r := _slot_rect(i)
+		var nm := String(sd.get("name", "—"))
+		var filled := nm != "—"
+		var rare: bool = bool(sd.get("rare", false))
+		draw_rect(r, Color(0.16, 0.15, 0.13) if filled else Color(0.12, 0.12, 0.15))
+		var border := Color(0.95, 0.8, 0.3) if rare else (Color(0.62, 0.56, 0.42) if filled else Color(0.34, 0.34, 0.4))
+		draw_rect(r, border, false, 2.5)
 		if font:
-			var tag := "   ✓ надето" if equipped else ""
-			var col := Color(0.85, 0.78, 0.5) if is_header else Color.WHITE
-			draw_string(font, r.position + Vector2(14, 34), label + tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, col)
+			draw_string(font, r.position + Vector2(8, 18), String(sd.get("label", "")), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 12, 13, Color(0.68, 0.68, 0.74))
+			var ncol := Color(1.0, 0.85, 0.35) if rare else (Color.WHITE if filled else Color(0.5, 0.5, 0.55))
+			draw_string(font, r.position + Vector2(8, 44), nm, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 12, 15, ncol)
+	if font:
+		draw_string(font, Vector2(sx - 96, top + 320), "Слот → снять", HORIZONTAL_ALIGNMENT_CENTER, 192, 14, Color(0.66, 0.66, 0.7))
+
+	# ---- bag ----
+	var bx := p.position.x + p.size.x * 0.52
+	if font:
+		draw_string(font, Vector2(bx, p.position.y + 128), "МЕШОК — нажми, чтобы надеть", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(0.85, 0.78, 0.5))
+	for i in range(12):
+		var rc := _bag_cell(i)
+		if rc.position.y + rc.size.y > p.position.y + p.size.y - 12:
+			break
+		var has_item := i < inv_bag.size()
+		var rare2 := has_item and bool(inv_bag[i].get("rare", false))
+		draw_rect(rc, Color(0.20, 0.18, 0.12) if rare2 else (Color(0.17, 0.18, 0.16) if has_item else Color(0.13, 0.13, 0.15)))
+		draw_rect(rc, Color(0.95, 0.8, 0.3) if rare2 else (Color(0.55, 0.5, 0.4) if has_item else Color(0.32, 0.32, 0.36)), false, 2.0)
+		if has_item and font:
+			var it: Dictionary = inv_bag[i]
+			draw_string(font, rc.position + Vector2(6, 16), String(it.get("tag", "")), HORIZONTAL_ALIGNMENT_LEFT, rc.size.x - 8, 11, Color(0.6, 0.6, 0.66))
+			var ncol2 := Color(1.0, 0.85, 0.35) if rare2 else Color.WHITE
+			draw_string(font, rc.position + Vector2(6, 40), String(it.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, rc.size.x - 8, 13, ncol2)
 
 func _draw_quest() -> void:
 	var v := _vp()
