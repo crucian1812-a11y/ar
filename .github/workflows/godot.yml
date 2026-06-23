@@ -15,6 +15,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -100,3 +102,28 @@ jobs:
           name: vityazi3d-debug-apk
           path: vityazi3d/build/*.apk
           if-no-files-found: error
+
+      - name: Publish APK to apk-latest branch
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir /tmp/apkout
+          cp vityazi3d/build/vityazi3d.apk /tmp/apkout/vityazi3d.apk
+          cd /tmp/apkout
+          git init -q
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git checkout -q -b apk-latest
+          git add vityazi3d.apk
+          git commit -q -m "APK build ${GITHUB_SHA}"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" apk-latest
+
+      - name: Create GitHub Release with APK
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: Vityazi 3D APK (build ${{ github.run_number }})
+          files: vityazi3d/build/*.apk
+          body: "Свежий APK игры «Витязи Новгорода 3D». Скачай vityazi3d.apk и установи на Android (разреши установку из неизвестных источников)."
