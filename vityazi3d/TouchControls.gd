@@ -19,6 +19,7 @@ var hp_frac := 1.0
 var kills := 0
 var gold := 0
 var can_interact := false
+var region := ""
 var shop_names: Array = []
 var toast := ""
 var toast_t := 0.0
@@ -335,6 +336,8 @@ func _draw_play() -> void:
 	if font:
 		draw_string(font, Vector2(bx + 8, by + 19), "ВИТЯЗЬ", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
 		draw_string(font, Vector2(v.x - 24, by + 20), "Золото: %d   Повержено: %d" % [gold, kills], HORIZONTAL_ALIGNMENT_RIGHT, -1, 20, Color(0.95, 0.85, 0.4))
+		if region != "":
+			draw_string(font, Vector2(v.x * 0.5, by + 18), "⌖ " + region, HORIZONTAL_ALIGNMENT_CENTER, -1, 18, Color(0.85, 0.9, 1.0))
 		if quest_hud != "":
 			draw_string(font, Vector2(bx + 4, by + bh + 24), "✦ " + quest_hud, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.55, 0.9, 0.55))
 		if toast_t > 0.0:

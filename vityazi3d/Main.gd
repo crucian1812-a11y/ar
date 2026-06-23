@@ -1,22 +1,48 @@
 extends Node3D
 
-const WORLD := 220.0
-const CELLS := 84
-const AMP := 9.0
+const WORLD := 460.0
+const CELLS := 150
+const AMP := 7.0
 const WATER_Y := -3.0
-const PLAZA := 120.0
+const CITY_FLAT := 50.0       # flat radius around a city
+const VILLAGE_FLAT := 15.0    # flat radius around a village
 
 var noise := FastNoiseLite.new()
 var controls
 var player
 
-var village_centers := [Vector3(-78, 0, -34), Vector3(80, 0, 50), Vector3(-90, 0, 60), Vector3(95, 0, -40)]
+# four княжеских города
+var cities := [
+	{"name": "Великий Новгород", "pos": Vector3(0, 0, 0)},
+	{"name": "Москва", "pos": Vector3(250, 0, 40)},
+	{"name": "Владимир", "pos": Vector3(-150, 0, 220)},
+	{"name": "Нижний Новгород", "pos": Vector3(150, 0, -260)},
+]
+
+# деревни на дорогах между городами
+var village_centers := [
+	# Новгород -> Москва
+	Vector3(95, 0, 12), Vector3(175, 0, 28),
+	# Новгород -> Владимир
+	Vector3(-58, 0, 86), Vector3(-110, 0, 158),
+	# Новгород -> Нижний
+	Vector3(58, 0, -100), Vector3(108, 0, -185),
+	# Москва -> Нижний
+	Vector3(215, 0, -110), Vector3(190, 0, -185),
+	# Москва -> Владимир
+	Vector3(55, 0, 135), Vector3(-45, 0, 195),
+	# Владимир -> Нижний (across)
+	Vector3(0, 0, -20), Vector3(40, 0, 70),
+]
+
+var flat_zones := []          # [{"pos":Vector3,"r":float}] built in _ready
 
 var state := "menu"            # menu / play / shop / gameover / win
 var kills := 0
 var alive := 0
 var boss_defeated := false
 var near_npc = null
+var current_region := ""
 
 # day/night
 var sky_mat: ProceduralSkyMaterial
@@ -60,14 +86,17 @@ func _ready() -> void:
 	noise.fractal_octaves = 3
 	noise.seed = randi()
 
+	_build_flat_zones()
 	_build_environment()
 	_build_terrain()
 	_build_floor()
 	_build_water()
-	_scatter_trees(260)
+	_scatter_trees(420)
 	_scatter_ground_detail()
-	_build_town()
+	for c in cities:
+		_build_city(c["pos"], c["name"])
 	_build_villages()
+	_build_roads()
 	_spawn_player()
 	_setup_ui()
 	state = "menu"
@@ -75,6 +104,13 @@ func _ready() -> void:
 
 	if "--selftest" in OS.get_cmdline_user_args():
 		_run_selftest()
+
+func _build_flat_zones() -> void:
+	flat_zones.clear()
+	for c in cities:
+		flat_zones.append({"pos": c["pos"], "r": CITY_FLAT})
+	for vc in village_centers:
+		flat_zones.append({"pos": vc, "r": VILLAGE_FLAT})
 
 func _run_selftest() -> void:
 	start_game(0)
@@ -96,9 +132,12 @@ func _run_selftest() -> void:
 	get_tree().quit(0 if get_tree().get_nodes_in_group("enemy").size() > 0 else 1)
 
 func terrain_height(x: float, z: float) -> float:
-	var d := Vector2(x, z).length()
-	var t := clampf((d - PLAZA) / 45.0, 0.0, 1.0)
-	t = t * t
+	var t := 1.0
+	for fz in flat_zones:
+		var p: Vector3 = fz["pos"]
+		var d := Vector2(x - p.x, z - p.z).length()
+		var f := clampf((d - float(fz["r"])) / 36.0, 0.0, 1.0)
+		t = minf(t, f * f)
 	return noise.get_noise_2d(x, z) * AMP * t
 
 # ---------------- environment / day-night ----------------
@@ -119,7 +158,7 @@ func _build_environment() -> void:
 	env.ambient_light_energy = 0.5
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.78, 0.82, 0.85)
-	env.fog_density = 0.0028
+	env.fog_density = 0.0013
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	we.environment = env
 	add_child(we)
@@ -189,15 +228,15 @@ func _add_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 
 func _ground_color(p: Vector3, slope: float) -> Color:
 	var h := p.y
-	var d := Vector2(p.x, p.z).length()
 	# sand by the water
 	if h < WATER_Y + 1.2:
 		return Color(0.74, 0.68, 0.48).lerp(Color(0.66, 0.60, 0.42), _checker(p, 1.3))
-	# town square — cobblestone paving with checkered mortar
-	if d < 40.0:
-		var stone := Color(0.50, 0.50, 0.53).lerp(Color(0.40, 0.40, 0.44), _checker(p, 1.1))
-		# main roads radiating from the kremlin stay lighter
-		return stone.lerp(Color(0.58, 0.57, 0.55), 0.25 * _checker(p, 0.55))
+	# city square — cobblestone paving with checkered mortar
+	for c in cities:
+		var cp: Vector3 = c["pos"]
+		if Vector2(p.x - cp.x, p.z - cp.z).length() < 42.0:
+			var stone := Color(0.50, 0.50, 0.53).lerp(Color(0.40, 0.40, 0.44), _checker(p, 1.1))
+			return stone.lerp(Color(0.58, 0.57, 0.55), 0.25 * _checker(p, 0.55))
 	# dirt courtyards around the villages
 	for vc in village_centers:
 		var vd := Vector2(p.x - vc.x, p.z - vc.z).length()
@@ -263,9 +302,9 @@ func _make_tree(pos: Vector3) -> void:
 
 # ---- ground clutter (grass tufts, pebbles, flowers) via MultiMesh ----
 func _scatter_ground_detail() -> void:
-	_multimesh_scatter(_grass_blade_mesh(), 3000, 46.0, 200.0, 0.6, 1.5, true)
-	_multimesh_scatter(_pebble_mesh(), 800, 24.0, 205.0, 0.6, 1.6, false)
-	_multimesh_scatter(_flower_mesh(), 420, 50.0, 195.0, 0.7, 1.3, true)
+	_multimesh_scatter(_grass_blade_mesh(), 9000, 46.0, 430.0, 0.6, 1.5, true)
+	_multimesh_scatter(_pebble_mesh(), 1800, 24.0, 440.0, 0.6, 1.6, false)
+	_multimesh_scatter(_flower_mesh(), 900, 50.0, 425.0, 0.7, 1.3, true)
 
 func _multimesh_scatter(mesh: Mesh, count: int, dmin: float, dmax: float, smin: float, smax: float, grass_only: bool) -> void:
 	var xforms := []
@@ -281,12 +320,17 @@ func _multimesh_scatter(mesh: Mesh, count: int, dmin: float, dmax: float, smin: 
 		if y < WATER_Y + 1.0:
 			continue
 		if grass_only:
-			# skip the dirt rings around villages
+			# skip the dirt rings around villages and the paved cities
 			var skip := false
 			for vc in village_centers:
 				if Vector2(x - vc.x, z - vc.z).length() < 14.0:
 					skip = true
 					break
+			if not skip:
+				for c in cities:
+					if Vector2(x - c["pos"].x, z - c["pos"].z).length() < 42.0:
+						skip = true
+						break
 			if skip:
 				continue
 		var b := Basis().rotated(Vector3.UP, randf() * TAU).scaled(Vector3.ONE * randf_range(smin, smax))
@@ -338,31 +382,36 @@ func _flower_mesh() -> Mesh:
 	sm.material = m
 	return sm
 
-func _build_town() -> void:
-	_church(Vector3(0, 0, -4))
+func _build_city(center: Vector3, cname: String) -> void:
+	_church(center + Vector3(0, 0, -4))
 	var ring := 37.0
 	var seg := 20
+	# gate faces toward the centre of the world (Новгород)
+	var to_origin := Vector3.ZERO - center
 	var gate := PI * 0.5
+	if to_origin.length() > 1.0:
+		gate = atan2(to_origin.z, to_origin.x)
 	for i in range(seg):
 		var a := TAU * float(i) / float(seg)
 		if absf(_angdiff(a, gate)) < 0.33:
 			continue
 		var x := cos(a) * ring
 		var z := sin(a) * ring
-		_wall(Vector3(x, 0, z), atan2(x, z))
+		_wall(center + Vector3(x, 0, z), atan2(x, z))
 	for i in range(0, seg, 5):
 		var a2 := TAU * float(i) / float(seg)
-		_tower(Vector3(cos(a2) * ring, 0, sin(a2) * ring))
+		_tower(center + Vector3(cos(a2) * ring, 0, sin(a2) * ring))
 	for s in [Vector3(-18, 0, -10), Vector3(18, 0, -10), Vector3(-20, 0, 12), Vector3(20, 0, 12)]:
-		_izba(s)
-	_make_npc(Vector3(8, 0, 4))                 # town merchant
-	_make_npc(Vector3(-8, 0, 4), "quest")       # town quest-giver
-	# torches: flanking the gate, by the church and the square
-	_torch(self, Vector3(cos(gate) * ring - 3, 0, sin(gate) * ring))
-	_torch(self, Vector3(cos(gate) * ring + 3, 0, sin(gate) * ring))
-	_torch(self, Vector3(-5, 0, 1))
-	_torch(self, Vector3(5, 0, 1))
-	_torch(self, Vector3(0, 0, 14))
+		_izba(center + s)
+	_make_npc(center + Vector3(8, 0, 4))                 # merchant
+	_make_npc(center + Vector3(-8, 0, 4), "quest")       # quest-giver
+	# torches: by the gate, the church and the square
+	var gp := Vector3(cos(gate) * ring, 0, sin(gate) * ring)
+	_torch(self, center + gp + Vector3(2.5, 0, 0))
+	_torch(self, center + gp + Vector3(-2.5, 0, 0))
+	_torch(self, center + Vector3(-5, 0, 1))
+	_torch(self, center + Vector3(5, 0, 1))
+	_torch(self, center + Vector3(0, 0, 14))
 
 func _build_villages() -> void:
 	var vi := 0
@@ -379,10 +428,43 @@ func _build_villages() -> void:
 		if vi % 2 == 1:
 			_make_npc(center + Vector3(3, 0, 3), "quest")
 		vi += 1
-	# a couple of lone landmarks for exploration
-	_tower(Vector3(0, 0, 110))
-	_tower(Vector3(-110, 0, 0))
-	_church(Vector3(115, 0, 95))
+	# lone landmarks scattered for exploration
+	for lp in [Vector3(-260, 0, -120), Vector3(300, 0, 230), Vector3(-330, 0, 60), Vector3(40, 0, 340), Vector3(360, 0, -90)]:
+		_tower(lp)
+	_church(Vector3(-300, 0, -250))
+	_church(Vector3(340, 0, 130))
+
+# dirt roads connecting the cities (flat darker strips of pebbles)
+func _build_roads() -> void:
+	var links := [
+		[Vector3(0, 0, 0), Vector3(250, 0, 40)],
+		[Vector3(0, 0, 0), Vector3(-150, 0, 220)],
+		[Vector3(0, 0, 0), Vector3(150, 0, -260)],
+		[Vector3(250, 0, 40), Vector3(150, 0, -260)],
+		[Vector3(250, 0, 40), Vector3(-150, 0, 220)],
+	]
+	for ln in links:
+		var a: Vector3 = ln[0]
+		var b: Vector3 = ln[1]
+		var steps := int(a.distance_to(b) / 7.0)
+		for i in range(steps + 1):
+			var t := float(i) / float(maxi(steps, 1))
+			var p := a.lerp(b, t)
+			# skip inside city squares (already paved)
+			var near_city := false
+			for c in cities:
+				if Vector2(p.x - c["pos"].x, p.z - c["pos"].z).length() < 40.0:
+					near_city = true
+					break
+			if near_city:
+				continue
+			var slab := MeshInstance3D.new()
+			var bm := BoxMesh.new(); bm.size = Vector3(3.4, 0.12, 4.2)
+			slab.mesh = bm
+			slab.material_override = _flat(Color(0.40, 0.33, 0.24))
+			slab.position = p + Vector3(0, 0.06, 0)
+			slab.rotation.y = atan2(b.x - a.x, b.z - a.z)
+			add_child(slab)
 
 func _make_npc(pos: Vector3, kind := "merchant") -> void:
 	var npc := GameNpc.new()
@@ -647,6 +729,7 @@ func start_game(id: int) -> void:
 	player.velocity = Vector3.ZERO
 	kills = 0; alive = 0
 	boss_defeated = false
+	current_region = ""
 	quest_idx = 0
 	quest_active = false
 	kills_base = 0
@@ -667,12 +750,16 @@ func _clear_actors() -> void:
 	alive = 0
 
 func _spawn_world_enemies() -> void:
-	var camps := [Vector3(75, 0, 18), Vector3(-58, 0, 60), Vector3(22, 0, -85),
-		Vector3(-80, 0, -55), Vector3(95, 0, -75), Vector3(-40, 0, 95),
-		Vector3(60, 0, 95), Vector3(-105, 0, 25)]
+	var camps := [
+		Vector3(120, 0, 25), Vector3(60, 0, -130), Vector3(205, 0, -60),
+		Vector3(-80, 0, 120), Vector3(-210, 0, 150), Vector3(90, 0, 185),
+		Vector3(215, 0, 150), Vector3(-40, 0, -185), Vector3(30, 0, 260),
+		Vector3(-265, 0, -40), Vector3(305, 0, -150), Vector3(160, 0, -340),
+		Vector3(-130, 0, 295), Vector3(265, 0, 285),
+	]
 	for c in camps:
 		_spawn_camp(c, false)
-	_spawn_camp(Vector3(0, 0, -110), true)   # boss camp
+	_spawn_camp(Vector3(-300, 0, -250), true)   # boss fortress (far landmark)
 
 func _spawn_camp(center: Vector3, boss: bool) -> void:
 	var n := randi_range(3, 5)
@@ -706,19 +793,28 @@ func _gold_for(kind: int) -> int:
 		_: return 8
 
 func _spawn_pickups() -> void:
-	for i in range(20):
+	for i in range(46):
 		_make_pickup("gold", randf_range(12, 35), _rand_spot())
-	for i in range(3):
+	for i in range(6):
 		_make_pickup("weapon", randf_range(10, 24), _rand_spot())
-	for i in range(3):
+	for i in range(5):
 		_make_pickup("armor", randf_range(0.08, 0.14), _rand_spot())
-	for i in range(2):
+	for i in range(5):
 		_make_pickup("heal", 40.0, _rand_spot())
 
 func _rand_spot() -> Vector3:
-	var a := randf() * TAU
-	var d := randf_range(22.0, 115.0)
-	return Vector3(cos(a) * d, 1.0, sin(a) * d)
+	for attempt in range(12):
+		var a := randf() * TAU
+		var d := randf_range(40.0, 380.0)
+		var p := Vector3(cos(a) * d, 1.0, sin(a) * d)
+		var ok := true
+		for c in cities:
+			if Vector2(p.x - c["pos"].x, p.z - c["pos"].z).length() < 38.0:
+				ok = false
+				break
+		if ok:
+			return p
+	return Vector3(70, 1.0, 70)
 
 func _make_pickup(kind: String, value: float, pos: Vector3) -> void:
 	var pk := GamePickup.new()
@@ -798,6 +894,7 @@ func _process(delta: float) -> void:
 				start_game(c)
 		"play":
 			_update_interaction()
+			_update_region()
 			if player.hp <= 0.0:
 				_game_over()
 				return
@@ -848,6 +945,18 @@ func _update_interaction() -> void:
 	controls.can_interact = near_npc != null
 	if near_npc != null:
 		controls.interact_label = "ЗАДАНИЕ" if near_npc.kind == "quest" else "ТОРГОВЛЯ"
+
+func _update_region() -> void:
+	var rname := ""
+	for c in cities:
+		if player.global_position.distance_to(c["pos"]) < 46.0:
+			rname = c["name"]
+			break
+	if rname != current_region:
+		current_region = rname
+		if rname != "":
+			show_toast("Вы прибыли в город: " + rname)
+	controls.region = current_region
 
 func _open_inventory() -> void:
 	_refresh_inv()
