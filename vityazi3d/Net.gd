@@ -39,7 +39,8 @@ func host() -> bool:
 	active = true
 	is_host = true
 	connected = true
-	status = "Хост создан. Игроки в сети могут подключиться."
+	var ip := local_ip()
+	status = "Хост готов. IP: %s — сообщите его второму игроку. Выберите витязя." % (ip if ip != "" else "?")
 	_beacon = PacketPeerUDP.new()
 	_beacon.set_broadcast_enabled(true)
 	_beacon.set_dest_address("255.255.255.255", BCAST_PORT)
@@ -70,6 +71,21 @@ func join(ip: String) -> bool:
 
 func leave() -> void:
 	_reset()
+
+func local_ip() -> String:
+	var best := ""
+	for a in IP.get_local_addresses():
+		if ":" in a:           # skip IPv6
+			continue
+		if a == "127.0.0.1":
+			continue
+		if a.begins_with("192.168."):
+			return a
+		if a.begins_with("10.") or a.begins_with("172."):
+			best = a
+		elif best == "":
+			best = a
+	return best
 
 func my_id() -> int:
 	if multiplayer.multiplayer_peer == null:

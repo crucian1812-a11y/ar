@@ -15,6 +15,8 @@ var _quality := false
 var net_mode := "single"
 var net_status := ""
 var _net := -1
+var ip_edit: LineEdit
+var _join_ip := ""
 var _interact := false
 var _close := false
 
@@ -86,12 +88,36 @@ var CHARS := [
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ip_edit = LineEdit.new()
+	ip_edit.placeholder_text = "IP хоста, напр. 192.168.1.42"
+	ip_edit.text = "192.168."
+	ip_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ip_edit.add_theme_font_size_override("font_size", 26)
+	ip_edit.visible = false
+	add_child(ip_edit)
 	set_process(true)
 
 func _vp() -> Vector2:
 	return get_viewport_rect().size
 
+func _ip_edit_rect() -> Rect2:
+	var v := _vp()
+	var y := _net_btn(0).position.y + 100.0
+	return Rect2(v.x * 0.5 - 250.0, y, 350.0, 50.0)
+
+func _join_btn_rect() -> Rect2:
+	var v := _vp()
+	var y := _net_btn(0).position.y + 100.0
+	return Rect2(v.x * 0.5 + 116.0, y, 134.0, 50.0)
+
 func _process(delta: float) -> void:
+	if ip_edit:
+		var show_ip := state == 0 and net_mode == "client"
+		ip_edit.visible = show_ip
+		if show_ip:
+			var r := _ip_edit_rect()
+			ip_edit.position = r.position
+			ip_edit.size = r.size
 	if state != 1:
 		move_vec = Vector2.ZERO
 	if toast_t > 0.0:
@@ -110,6 +136,8 @@ func consume_quality() -> bool:
 	var q := _quality; _quality = false; return q
 func consume_net() -> int:
 	var n := _net; _net = -1; return n
+func consume_join_ip() -> String:
+	var s := _join_ip; _join_ip = ""; return s
 func consume_restart() -> bool:
 	var r := restart; restart = false; return r
 func consume_interact() -> bool:
@@ -296,6 +324,10 @@ func _menu_tap(p: Vector2) -> void:
 		if _net_btn(i).has_point(p):
 			_net = i
 			return
+	if net_mode == "client" and _join_btn_rect().has_point(p):
+		if ip_edit:
+			_join_ip = ip_edit.text.strip_edges()
+		return
 	for i in range(3):
 		if _char_rect(i).has_point(p):
 			chosen = i
@@ -707,6 +739,16 @@ func _draw_menu() -> void:
 			draw_string(font, Vector2(nb.position.x, nb.position.y + 30), nlabels[i], HORIZONTAL_ALIGNMENT_CENTER, nb.size.x, 19, Color.WHITE)
 	if font and net_status != "":
 		draw_string(font, Vector2(0, _net_btn(0).position.y + 74.0), net_status, HORIZONTAL_ALIGNMENT_CENTER, v.x, 18, Color(0.7, 0.85, 1.0))
+	# manual IP join (client) — works even where Wi-Fi auto-discovery is blocked
+	if net_mode == "client":
+		var er := _ip_edit_rect()
+		draw_rect(Rect2(er.position - Vector2(2, 2), er.size + Vector2(4, 4)), goldd, false, 2.0)
+		var jb := _join_btn_rect()
+		draw_rect(jb, Color(0.18, 0.26, 0.20))
+		draw_rect(jb, Color(0.6, 0.9, 0.5, 0.95), false, 2.0)
+		if font:
+			draw_string(font, Vector2(jb.position.x, jb.position.y + 33), "Войти", HORIZONTAL_ALIGNMENT_CENTER, jb.size.x, 21, Color.WHITE)
+			draw_string(font, Vector2(0, er.position.y - 12.0), "Введите IP хоста и нажмите «Войти» (или дождитесь авто-поиска)", HORIZONTAL_ALIGNMENT_CENTER, v.x, 16, Color(0.75, 0.78, 0.85))
 
 	# "выбери витязя" label with runes
 	var ly := v.y * 0.40

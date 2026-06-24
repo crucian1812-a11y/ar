@@ -1650,6 +1650,10 @@ func _process(delta: float) -> void:
 				net_mode = "host"; Net.host()
 			elif nm == 2:
 				net_mode = "client"; Net.discover()
+			var jip: String = controls.consume_join_ip()
+			if jip != "":
+				net_mode = "client"
+				Net.join(jip)
 			controls.net_mode = net_mode
 			controls.net_status = Net.status
 			var c: int = controls.consume_chosen()
