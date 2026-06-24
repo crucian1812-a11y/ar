@@ -174,16 +174,17 @@ func _interact_rect() -> Rect2:
 
 func _char_rect(i: int) -> Rect2:
 	var v := _vp()
-	var w := minf(280.0, (v.x - 160.0) / 3.0)
-	var h := w * 1.25
-	var gap := 28.0
+	var w := clampf((v.x - 220.0) / 3.0, 150.0, 240.0)
+	var h := minf(w * 1.12, v.y * 0.34)
+	var gap := 26.0
 	var total := 3.0 * w + 2.0 * gap
 	var x0 := (v.x - total) * 0.5
-	return Rect2(x0 + i * (w + gap), v.y * 0.52 - h * 0.5, w, h)
+	var cy := v.y * 0.66
+	return Rect2(x0 + i * (w + gap), cy - h * 0.5, w, h)
 
 func _quality_btn() -> Rect2:
 	var v := _vp()
-	return Rect2(v.x * 0.5 - 150.0, v.y * 0.88, 300.0, 52.0)
+	return Rect2(v.x * 0.5 - 150.0, v.y * 0.91, 300.0, 48.0)
 
 func _net_btn(i: int) -> Rect2:
 	var v := _vp()
@@ -191,7 +192,7 @@ func _net_btn(i: int) -> Rect2:
 	var gap := 16.0
 	var total := 3.0 * w + 2.0 * gap
 	var x0 := (v.x - total) * 0.5
-	return Rect2(x0 + i * (w + gap), v.y * 0.30, w, 46.0)
+	return Rect2(x0 + i * (w + gap), v.y * 0.245, w, 46.0)
 
 func _shop_panel() -> Rect2:
 	var v := _vp()
@@ -642,42 +643,112 @@ func _draw_quest() -> void:
 	if font:
 		draw_string(font, Vector2(br.position.x, br.position.y + 36), quest_btn, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, 24, Color.WHITE)
 
+func _rune_segs(kind: int) -> Array:
+	match kind:
+		0: return [[Vector2(0, -1), Vector2(0, 1)], [Vector2(0, -0.2), Vector2(-0.6, -0.7)], [Vector2(0, -0.2), Vector2(0.6, -0.7)]]
+		1: return [[Vector2(0, -1), Vector2(0, 1)], [Vector2(0, -0.6), Vector2(0.6, -1)], [Vector2(0, -0.15), Vector2(0.6, -0.55)]]
+		2: return [[Vector2(0, -1), Vector2(0, 1)], [Vector2(-0.5, -0.5), Vector2(0, -1), Vector2(0.5, -0.5)]]
+		3: return [[Vector2(0, -1), Vector2(0.7, 0), Vector2(0, 1), Vector2(-0.7, 0), Vector2(0, -1)]]
+		_: return [[Vector2(-0.5, -1), Vector2(0.4, -0.3), Vector2(-0.4, 0.3), Vector2(0.5, 1)]]
+
+func _draw_rune(pos: Vector2, s: float, kind: int, col: Color, wdt := 2.0) -> void:
+	for seg in _rune_segs(kind):
+		var pts := PackedVector2Array()
+		for p in seg:
+			pts.append(pos + Vector2(p.x, p.y) * s)
+		draw_polyline(pts, col, wdt, true)
+
+func _draw_knight_emblem(c: Vector2, r: float, col: Color) -> void:
+	# shoulders
+	draw_colored_polygon(PackedVector2Array([
+		c + Vector2(-r * 1.15, r * 1.25), c + Vector2(r * 1.15, r * 1.25),
+		c + Vector2(r * 0.7, r * 0.35), c + Vector2(-r * 0.7, r * 0.35)]), col * 0.7)
+	# helmet dome
+	draw_circle(c, r, col)
+	draw_arc(c, r, 0, TAU, 40, Color(0.06, 0.07, 0.09), 2.0, true)
+	# visor band
+	draw_rect(Rect2(c.x - r * 0.8, c.y - r * 0.1, r * 1.6, r * 0.42), Color(0.06, 0.07, 0.09, 0.8))
+	# nasal guard
+	draw_rect(Rect2(c.x - r * 0.1, c.y - r * 0.55, r * 0.2, r * 1.0), col * 0.55)
+
 func _draw_menu() -> void:
 	var v := _vp()
 	var font := ThemeDB.fallback_font
-	draw_rect(Rect2(0, 0, v.x, v.y), Color(0, 0, 0, 0.45))
+	draw_rect(Rect2(0, 0, v.x, v.y), Color(0.05, 0.05, 0.07, 0.62))
+	var gold := Color(0.86, 0.72, 0.34)
+	var goldd := Color(0.55, 0.45, 0.22)
+	# ornamental outer frame
+	var fr := Rect2(18, 14, v.x - 36, v.y - 28)
+	draw_rect(fr, goldd, false, 2.0)
+	draw_rect(Rect2(fr.position.x + 6, fr.position.y + 6, fr.size.x - 12, fr.size.y - 12), Color(0.5, 0.4, 0.2, 0.5), false, 1.0)
+	for cpt in [fr.position, Vector2(fr.end.x, fr.position.y), Vector2(fr.position.x, fr.end.y), fr.end]:
+		_draw_rune(cpt, 12.0, 3, gold, 2.0)
+
+	# title with flanking flourishes
+	var ty := v.y * 0.105
 	if font:
-		draw_string(font, Vector2(0, v.y * 0.16), "ВИТЯЗИ НОВГОРОДА", HORIZONTAL_ALIGNMENT_CENTER, v.x, 46, Color(0.9, 0.78, 0.4))
-		draw_string(font, Vector2(0, v.y * 0.24), "Выбери витязя", HORIZONTAL_ALIGNMENT_CENTER, v.x, 24, Color.WHITE)
+		draw_string(font, Vector2(0, ty), "ВИТЯЗИ НОВГОРОДА", HORIZONTAL_ALIGNMENT_CENTER, v.x, 48, gold)
+		draw_string(font, Vector2(0, v.y * 0.158), "— застава земли русской —", HORIZONTAL_ALIGNMENT_CENTER, v.x, 20, Color(0.78, 0.74, 0.62))
+	var cxm := v.x * 0.5
+	for sgn in [-1.0, 1.0]:
+		var ox: float = cxm + sgn * 250.0
+		draw_line(Vector2(ox, ty - 16), Vector2(ox + sgn * 90.0, ty - 16), goldd, 2.0)
+		_draw_rune(Vector2(ox, ty - 16), 8.0, 3, gold, 2.0)
+
 	# network mode buttons
 	var nlabels := ["Одиночная", "Создать Wi-Fi", "Найти игру"]
 	var nmodes := ["single", "host", "client"]
 	for i in range(3):
 		var nb := _net_btn(i)
 		var sel: bool = net_mode == nmodes[i]
-		draw_rect(nb, Color(0.20, 0.26, 0.20) if sel else Color(0.14, 0.15, 0.18, 0.95))
-		draw_rect(nb, Color(0.6, 0.9, 0.5, 0.95) if sel else Color(0.5, 0.55, 0.65, 0.85), false, 2.0)
+		draw_rect(nb, Color(0.18, 0.26, 0.20) if sel else Color(0.12, 0.13, 0.16, 0.96))
+		draw_rect(nb, Color(0.6, 0.9, 0.5, 0.95) if sel else Color(0.5, 0.45, 0.3, 0.9), false, 2.0)
 		if font:
 			draw_string(font, Vector2(nb.position.x, nb.position.y + 30), nlabels[i], HORIZONTAL_ALIGNMENT_CENTER, nb.size.x, 19, Color.WHITE)
 	if font and net_status != "":
-		draw_string(font, Vector2(0, v.y * 0.30 + 70.0), net_status, HORIZONTAL_ALIGNMENT_CENTER, v.x, 18, Color(0.7, 0.85, 1.0))
+		draw_string(font, Vector2(0, _net_btn(0).position.y + 74.0), net_status, HORIZONTAL_ALIGNMENT_CENTER, v.x, 18, Color(0.7, 0.85, 1.0))
+
+	# "выбери витязя" label with runes
+	var ly := v.y * 0.40
+	if font:
+		draw_string(font, Vector2(0, ly), "В Ы Б Е Р И   В И Т Я З Я", HORIZONTAL_ALIGNMENT_CENTER, v.x, 22, Color(0.9, 0.85, 0.6))
+	_draw_rune(Vector2(cxm - 200.0, ly - 7), 9.0, 0, gold, 2.0)
+	_draw_rune(Vector2(cxm + 200.0, ly - 7), 9.0, 2, gold, 2.0)
+
+	# compact character cards in древнерусском стиле
+	var runes := [0, 2, 1]
 	for i in range(3):
 		var r := _char_rect(i)
 		var c: Color = CHARS[i][2]
-		draw_rect(r, Color(0.12, 0.13, 0.16, 0.92))
-		draw_rect(r, c, false, 4.0)
+		# panel + double frame
+		draw_rect(r, Color(0.11, 0.10, 0.12, 0.95))
+		draw_rect(Rect2(r.position.x, r.position.y, r.size.x, r.size.y * 0.5), Color(c.r, c.g, c.b, 0.10))
+		draw_rect(r, c, false, 3.0)
+		draw_rect(Rect2(r.position.x + 5, r.position.y + 5, r.size.x - 10, r.size.y - 10), goldd, false, 1.0)
+		# corner runes
+		var inset := 16.0
+		_draw_rune(r.position + Vector2(inset, inset), 7.0, runes[i], c, 1.6)
+		_draw_rune(Vector2(r.end.x - inset, r.position.y + inset), 7.0, runes[i], c, 1.6)
+		# emblem
 		var cx := r.position.x + r.size.x * 0.5
-		var cy := r.position.y + r.size.y * 0.42
-		draw_circle(Vector2(cx, cy), r.size.x * 0.20, c)
+		var ey := r.position.y + r.size.y * 0.36
+		var er := r.size.x * 0.17
+		draw_arc(Vector2(cx, ey), er * 1.55, 0, TAU, 40, c, 2.0, true)
+		_draw_knight_emblem(Vector2(cx, ey), er, c)
 		if font:
-			draw_string(font, Vector2(r.position.x, r.position.y + r.size.y * 0.74), CHARS[i][0], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 30, Color.WHITE)
-			draw_string(font, Vector2(r.position.x, r.position.y + r.size.y * 0.86), CHARS[i][1], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 22, Color(0.85, 0.85, 0.85))
+			draw_string(font, Vector2(r.position.x, r.position.y + r.size.y * 0.72), CHARS[i][0], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 28, Color(0.96, 0.92, 0.8))
+			draw_string(font, Vector2(r.position.x, r.position.y + r.size.y * 0.84), CHARS[i][1], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 19, Color(0.8, 0.8, 0.82))
+		# decorative rune row under the name
+		for k in range(3):
+			_draw_rune(Vector2(cx + (k - 1) * 22.0, r.position.y + r.size.y * 0.93), 6.0, (runes[i] + k) % 5, goldd, 1.4)
+
 	# graphics quality toggle
 	var qb := _quality_btn()
-	draw_rect(qb, Color(0.14, 0.16, 0.20, 0.95))
-	draw_rect(qb, Color(0.55, 0.6, 0.7, 0.9), false, 2.0)
+	draw_rect(qb, Color(0.13, 0.14, 0.18, 0.96))
+	draw_rect(qb, Color(0.55, 0.5, 0.32, 0.9), false, 2.0)
 	if font:
-		draw_string(font, Vector2(qb.position.x, qb.position.y + 34), quality_label + "  ⟳", HORIZONTAL_ALIGNMENT_CENTER, qb.size.x, 22, Color(0.88, 0.9, 0.95))
+		draw_string(font, Vector2(qb.position.x, qb.position.y + 32), quality_label + "  ⟳", HORIZONTAL_ALIGNMENT_CENTER, qb.size.x, 21, Color(0.88, 0.9, 0.95))
+
 
 func _draw_end(title: String, col: Color) -> void:
 	var v := _vp()
