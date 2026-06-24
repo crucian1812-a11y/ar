@@ -44,6 +44,17 @@ var saray_unlocked := false
 var saray_barrier: Node3D = null
 var saray_near := false
 
+# textured materials (procedural normal maps) + particle assets
+var _nrm_wood: NoiseTexture2D
+var _nrm_stone: NoiseTexture2D
+var _nrm_soft: NoiseTexture2D
+var _nrm_ground: NoiseTexture2D
+var _fire_mat: StandardMaterial3D
+var _smoke_mat: StandardMaterial3D
+var _spark_mesh: QuadMesh
+var _flame_mesh: QuadMesh
+var _smoke_mesh: QuadMesh
+
 var state := "menu"            # menu / play / shop / gameover / win
 var kills := 0
 var alive := 0
@@ -94,6 +105,7 @@ func _ready() -> void:
 	noise.seed = randi()
 
 	_build_flat_zones()
+	_build_assets()
 	_build_environment()
 	_build_terrain()
 	_build_floor()
@@ -179,6 +191,13 @@ func _build_environment() -> void:
 	env.fog_light_color = Color(0.78, 0.82, 0.85)
 	env.fog_density = 0.0013
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	# subtle bloom so torches, fire and rare-weapon glow read
+	env.glow_enabled = true
+	env.glow_intensity = 0.5
+	env.glow_strength = 0.9
+	env.glow_bloom = 0.08
+	env.glow_hdr_threshold = 1.05
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
 	we.environment = env
 	add_child(we)
 
@@ -222,7 +241,13 @@ func _build_terrain() -> void:
 	stool.generate_normals()
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 1.0
+	mat.roughness = 0.95
+	mat.normal_enabled = true
+	mat.normal_texture = _nrm_ground
+	mat.normal_scale = 1.1
+	mat.uv1_triplanar = true
+	mat.uv1_world_triplanar = true
+	mat.uv1_scale = Vector3(0.22, 0.22, 0.22)
 	stool.set_material(mat)
 	var mi := MeshInstance3D.new()
 	mi.mesh = stool.commit()
@@ -632,20 +657,22 @@ func _wall(pos: Vector3, yaw: float) -> void:
 	add_child(root)
 	var w := MeshInstance3D.new()
 	var bm := BoxMesh.new(); bm.size = Vector3(12.0, 5.0, 1.3)
-	w.mesh = bm; w.material_override = _flat(Color(0.52, 0.43, 0.33)); w.position = Vector3(0, 2.5, 0)
+	w.mesh = bm; w.material_override = _stone(Color(0.52, 0.43, 0.33)); w.position = Vector3(0, 2.5, 0)
 	root.add_child(w)
 	for k in [-4.0, 0.0, 4.0]:
 		var mer := MeshInstance3D.new()
 		var mm := BoxMesh.new(); mm.size = Vector3(1.7, 1.2, 1.6)
-		mer.mesh = mm; mer.material_override = _flat(Color(0.46, 0.38, 0.30)); mer.position = Vector3(k, 5.4, 0)
+		mer.mesh = mm; mer.material_override = _stone(Color(0.46, 0.38, 0.30)); mer.position = Vector3(k, 5.4, 0)
 		root.add_child(mer)
 	_solid(root, Vector3(12.0, 5.0, 1.3), Vector3(0, 2.5, 0))
 
-# a wall slab that is both visible and solid
-func _wall_seg(root: Node3D, size: Vector3, center: Vector3, col: Color) -> void:
+# a wall slab that is both visible and solid; defaults to timbered wood
+func _wall_seg(root: Node3D, size: Vector3, center: Vector3, col: Color, mat: StandardMaterial3D = null) -> void:
 	var w := MeshInstance3D.new()
 	var bm := BoxMesh.new(); bm.size = size
-	w.mesh = bm; w.material_override = _flat(col); w.position = center
+	w.mesh = bm
+	w.material_override = mat if mat != null else _wood(col)
+	w.position = center
 	root.add_child(w)
 	_solid(root, size, center)
 
@@ -670,19 +697,20 @@ func _church(pos: Vector3) -> void:
 	var root := Node3D.new(); root.position = pos; add_child(root)
 	var wcol := Color(0.87, 0.85, 0.79)
 	var hx := 3.6; var hz := 3.6; var hh := 7.0; var t := 0.4
+	var pmat := _plaster(wcol)
 	# stone floor
 	var fl := MeshInstance3D.new()
 	var fb := BoxMesh.new(); fb.size = Vector3(hx * 2, 0.16, hz * 2)
-	fl.mesh = fb; fl.material_override = _flat(Color(0.58, 0.56, 0.52)); fl.position = Vector3(0, 0.08, 0)
+	fl.mesh = fb; fl.material_override = _stone(Color(0.58, 0.56, 0.52)); fl.position = Vector3(0, 0.08, 0)
 	root.add_child(fl)
 	# walls with a tall doorway on +Z
-	_wall_seg(root, Vector3(hx * 2 + t, hh, t), Vector3(0, hh * 0.5, -hz), wcol)
-	_wall_seg(root, Vector3(t, hh, hz * 2), Vector3(-hx, hh * 0.5, 0), wcol)
-	_wall_seg(root, Vector3(t, hh, hz * 2), Vector3(hx, hh * 0.5, 0), wcol)
+	_wall_seg(root, Vector3(hx * 2 + t, hh, t), Vector3(0, hh * 0.5, -hz), wcol, pmat)
+	_wall_seg(root, Vector3(t, hh, hz * 2), Vector3(-hx, hh * 0.5, 0), wcol, pmat)
+	_wall_seg(root, Vector3(t, hh, hz * 2), Vector3(hx, hh * 0.5, 0), wcol, pmat)
 	var dw := 1.9
 	var seg := (hx * 2 - dw) * 0.5
-	_wall_seg(root, Vector3(seg, hh, t), Vector3(-(dw * 0.5 + seg * 0.5), hh * 0.5, hz), wcol)
-	_wall_seg(root, Vector3(seg, hh, t), Vector3(dw * 0.5 + seg * 0.5, hh * 0.5, hz), wcol)
+	_wall_seg(root, Vector3(seg, hh, t), Vector3(-(dw * 0.5 + seg * 0.5), hh * 0.5, hz), wcol, pmat)
+	_wall_seg(root, Vector3(seg, hh, t), Vector3(dw * 0.5 + seg * 0.5, hh * 0.5, hz), wcol, pmat)
 	_wall_seg(root, Vector3(dw, hh - 3.2, t), Vector3(0, hh - (hh - 3.2) * 0.5, hz), wcol)
 	# tall arched windows on the sides
 	for zz in [-1.6, 1.6]:
@@ -691,11 +719,11 @@ func _church(pos: Vector3) -> void:
 	# cornice + drum + golden dome + cross
 	var cornice := MeshInstance3D.new()
 	var cc := BoxMesh.new(); cc.size = Vector3(hx * 2 + 0.9, 0.55, hz * 2 + 0.9)
-	cornice.mesh = cc; cornice.material_override = _flat(Color(0.79, 0.77, 0.71)); cornice.position = Vector3(0, hh, 0)
+	cornice.mesh = cc; cornice.material_override = _stone(Color(0.79, 0.77, 0.71)); cornice.position = Vector3(0, hh, 0)
 	root.add_child(cornice)
 	var drum := MeshInstance3D.new()
 	var dc := CylinderMesh.new(); dc.top_radius = 1.1; dc.bottom_radius = 1.1; dc.height = 1.8
-	drum.mesh = dc; drum.material_override = _flat(Color(0.81, 0.79, 0.73)); drum.position = Vector3(0, hh + 1.1, 0)
+	drum.mesh = dc; drum.material_override = _plaster(Color(0.81, 0.79, 0.73)); drum.position = Vector3(0, hh + 1.1, 0)
 	root.add_child(drum)
 	var dome := MeshInstance3D.new()
 	var sm := SphereMesh.new(); sm.radius = 1.5; sm.height = 2.8
@@ -716,14 +744,14 @@ func _tower(pos: Vector3) -> void:
 	var root := Node3D.new(); root.position = pos; add_child(root)
 	var body := MeshInstance3D.new()
 	var bm := BoxMesh.new(); bm.size = Vector3(4, 9, 4)
-	body.mesh = bm; body.material_override = _flat(Color(0.55, 0.45, 0.34)); body.position = Vector3(0, 4.5, 0)
+	body.mesh = bm; body.material_override = _stone(Color(0.55, 0.45, 0.34)); body.position = Vector3(0, 4.5, 0)
 	root.add_child(body)
 	# corner posts for a timbered look
 	for sx in [-1.9, 1.9]:
 		for sz in [-1.9, 1.9]:
 			var post := MeshInstance3D.new()
 			var pb := BoxMesh.new(); pb.size = Vector3(0.4, 9.2, 0.4)
-			post.mesh = pb; post.material_override = _flat(Color(0.42, 0.33, 0.24)); post.position = Vector3(sx, 4.6, sz)
+			post.mesh = pb; post.material_override = _wood(Color(0.42, 0.33, 0.24)); post.position = Vector3(sx, 4.6, sz)
 			root.add_child(post)
 	# arrow-slit windows
 	for sz2 in [-1.0, 1.0]:
@@ -739,16 +767,16 @@ func _well(pos: Vector3) -> void:
 	var root := Node3D.new(); root.position = pos; add_child(root)
 	var ring := MeshInstance3D.new()
 	var cm := CylinderMesh.new(); cm.top_radius = 1.0; cm.bottom_radius = 1.1; cm.height = 1.2
-	ring.mesh = cm; ring.material_override = _flat(Color(0.5, 0.5, 0.52)); ring.position = Vector3(0, 0.6, 0)
+	ring.mesh = cm; ring.material_override = _stone(Color(0.5, 0.5, 0.52)); ring.position = Vector3(0, 0.6, 0)
 	root.add_child(ring)
 	for sx in [-1.0, 1.0]:
 		var post := MeshInstance3D.new()
 		var pb := BoxMesh.new(); pb.size = Vector3(0.18, 2.4, 0.18)
-		post.mesh = pb; post.material_override = _flat(Color(0.4, 0.3, 0.2)); post.position = Vector3(sx, 1.8, 0)
+		post.mesh = pb; post.material_override = _wood(Color(0.4, 0.3, 0.2)); post.position = Vector3(sx, 1.8, 0)
 		root.add_child(post)
 	var roof := MeshInstance3D.new()
 	var pr := PrismMesh.new(); pr.size = Vector3(2.8, 0.9, 1.6)
-	roof.mesh = pr; roof.material_override = _flat(Color(0.34, 0.26, 0.18)); roof.position = Vector3(0, 3.2, 0)
+	roof.mesh = pr; roof.material_override = _wood(Color(0.34, 0.26, 0.18)); roof.position = Vector3(0, 3.2, 0)
 	root.add_child(roof)
 	_solid(root, Vector3(2.2, 1.2, 2.2), Vector3(0, 0.6, 0))
 
@@ -764,7 +792,7 @@ func _izba(pos: Vector3, big := false) -> void:
 	# plank floor
 	var fl := MeshInstance3D.new()
 	var fb := BoxMesh.new(); fb.size = Vector3(hx * 2, 0.1, hz * 2)
-	fl.mesh = fb; fl.material_override = _flat(Color(0.36, 0.27, 0.18)); fl.position = Vector3(0, 0.05, 0)
+	fl.mesh = fb; fl.material_override = _wood(Color(0.36, 0.27, 0.18)); fl.position = Vector3(0, 0.05, 0)
 	root.add_child(fl)
 	# walls with door gap on +Z
 	_wall_seg(root, Vector3(hx * 2 + t, hh, t), Vector3(0, hh * 0.5, -hz), logc)
@@ -788,15 +816,18 @@ func _izba(pos: Vector3, big := false) -> void:
 	# gable roof
 	var roof := MeshInstance3D.new()
 	var pr := PrismMesh.new(); pr.size = Vector3(hx * 2 + 0.7, 2.2, hz * 2 + 0.7)
-	roof.mesh = pr; roof.material_override = _flat(Color(0.33, 0.25, 0.17)); roof.position = Vector3(0, hh + 1.0, 0)
+	roof.mesh = pr; roof.material_override = _wood(Color(0.33, 0.25, 0.17)); roof.position = Vector3(0, hh + 1.0, 0)
 	root.add_child(roof)
-	# chimney with a faint glow
+	# chimney with rising smoke
 	var ch := MeshInstance3D.new()
 	var cbx := BoxMesh.new(); cbx.size = Vector3(0.5, 1.5, 0.5)
-	ch.mesh = cbx; ch.material_override = _flat(Color(0.42, 0.40, 0.40)); ch.position = Vector3(hx * 0.55, hh + 1.7, -hz * 0.4)
+	ch.mesh = cbx; ch.material_override = _stone(Color(0.42, 0.40, 0.40)); ch.position = Vector3(hx * 0.55, hh + 1.7, -hz * 0.4)
 	root.add_child(ch)
+	var smoke := _make_smoke()
+	smoke.position = Vector3(hx * 0.55, hh + 2.6, -hz * 0.4)
+	root.add_child(smoke)
 	# log-cabin corner posts
-	var logend := _flat(Color(0.40, 0.29, 0.18))
+	var logend := _wood(Color(0.40, 0.29, 0.18))
 	for cx in [-hx, hx]:
 		for cz in [-hz, hz]:
 			var post := MeshInstance3D.new()
@@ -820,16 +851,21 @@ func _torch(parent: Node3D, pos: Vector3) -> void:
 	var root := Node3D.new(); root.position = pos; parent.add_child(root)
 	var pole := MeshInstance3D.new()
 	var pm := CylinderMesh.new(); pm.top_radius = 0.07; pm.bottom_radius = 0.09; pm.height = 2.4
-	pole.mesh = pm; pole.material_override = _flat(Color(0.32, 0.22, 0.14)); pole.position = Vector3(0, 1.2, 0)
+	pole.mesh = pm; pole.material_override = _wood(Color(0.32, 0.22, 0.14)); pole.position = Vector3(0, 1.2, 0)
 	root.add_child(pole)
+	# glowing ember core
 	var flame := MeshInstance3D.new()
-	var fm := SphereMesh.new(); fm.radius = 0.18; fm.height = 0.4
+	var fm := SphereMesh.new(); fm.radius = 0.14; fm.height = 0.3
 	flame.mesh = fm
 	var fmat := _flat(Color(1.0, 0.6, 0.2))
 	fmat.emission_enabled = true; fmat.emission = Color(1.0, 0.55, 0.15); fmat.emission_energy_multiplier = 2.0
 	fmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	flame.mesh.material = fmat; flame.position = Vector3(0, 2.5, 0)
+	flame.mesh.material = fmat; flame.position = Vector3(0, 2.45, 0)
 	root.add_child(flame)
+	# animated fire particles
+	var fire := _make_fire(1.0)
+	fire.position = Vector3(0, 2.5, 0)
+	root.add_child(fire)
 	var light := OmniLight3D.new()
 	light.light_color = Color(1.0, 0.7, 0.35)
 	light.light_energy = 2.2
@@ -843,6 +879,131 @@ func _flat(c: Color) -> StandardMaterial3D:
 	m.albedo_color = c
 	m.roughness = 1.0
 	return m
+
+# ---------------- procedural textures & particle assets ----------------
+
+func _build_assets() -> void:
+	_nrm_wood = _norm_tex(0.09, 2.2, 4)
+	_nrm_stone = _norm_tex(0.05, 2.6, 3)
+	_nrm_soft = _norm_tex(0.04, 1.0, 3)
+	_nrm_ground = _norm_tex(0.12, 1.6, 4)
+	# additive glow material for fire / sparks (vertex colour driven by particles)
+	_fire_mat = StandardMaterial3D.new()
+	_fire_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_fire_mat.vertex_color_use_as_albedo = true
+	_fire_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_fire_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_fire_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_fire_mat.billboard_keep_scale = true
+	_fire_mat.disable_receive_shadows = true
+	# soft alpha material for smoke / dust
+	_smoke_mat = StandardMaterial3D.new()
+	_smoke_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_smoke_mat.vertex_color_use_as_albedo = true
+	_smoke_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_smoke_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_smoke_mat.billboard_keep_scale = true
+	_smoke_mat.disable_receive_shadows = true
+	_spark_mesh = QuadMesh.new(); _spark_mesh.size = Vector2(0.14, 0.14); _spark_mesh.material = _fire_mat
+	_flame_mesh = QuadMesh.new(); _flame_mesh.size = Vector2(0.5, 0.5); _flame_mesh.material = _fire_mat
+	_smoke_mesh = QuadMesh.new(); _smoke_mesh.size = Vector2(0.7, 0.7); _smoke_mesh.material = _smoke_mat
+
+func _norm_tex(freq: float, bump: float, oct: int) -> NoiseTexture2D:
+	var n := FastNoiseLite.new()
+	n.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	n.frequency = freq
+	n.fractal_octaves = oct
+	var t := NoiseTexture2D.new()
+	t.width = 256
+	t.height = 256
+	t.seamless = true
+	t.as_normal_map = true
+	t.bump_strength = bump
+	t.noise = n
+	return t
+
+func _tex_mat(c: Color, nrm: NoiseTexture2D, rough: float, tile: float, nscale: float) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = rough
+	m.normal_enabled = true
+	m.normal_texture = nrm
+	m.normal_scale = nscale
+	m.uv1_scale = Vector3(tile, tile, tile)
+	return m
+
+func _wood(c: Color) -> StandardMaterial3D:
+	return _tex_mat(c, _nrm_wood, 0.9, 2.5, 1.1)
+
+func _stone(c: Color) -> StandardMaterial3D:
+	return _tex_mat(c, _nrm_stone, 0.95, 3.0, 1.3)
+
+func _plaster(c: Color) -> StandardMaterial3D:
+	return _tex_mat(c, _nrm_soft, 0.85, 2.0, 0.6)
+
+# continuous flame for torches/braziers
+func _make_fire(scale: float) -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.amount = 12
+	p.lifetime = 0.65
+	p.mesh = _flame_mesh
+	p.direction = Vector3.UP
+	p.spread = 12.0
+	p.gravity = Vector3(0, 1.4, 0)
+	p.initial_velocity_min = 0.4
+	p.initial_velocity_max = 0.9
+	p.scale_amount_min = 0.5 * scale
+	p.scale_amount_max = 0.95 * scale
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1.0, 0.85, 0.35, 0.95))
+	ramp.set_color(1, Color(0.9, 0.25, 0.08, 0.0))
+	ramp.add_point(0.5, Color(1.0, 0.5, 0.12, 0.8))
+	p.color_ramp = ramp
+	return p
+
+# rising smoke for chimneys
+func _make_smoke() -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.amount = 8
+	p.lifetime = 2.4
+	p.mesh = _smoke_mesh
+	p.direction = Vector3.UP
+	p.spread = 16.0
+	p.gravity = Vector3(0.4, 1.1, 0)
+	p.initial_velocity_min = 0.5
+	p.initial_velocity_max = 1.0
+	p.scale_amount_min = 0.6
+	p.scale_amount_max = 1.4
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(0.5, 0.5, 0.5, 0.0))
+	ramp.set_color(1, Color(0.35, 0.35, 0.35, 0.0))
+	ramp.add_point(0.25, Color(0.55, 0.55, 0.55, 0.45))
+	p.color_ramp = ramp
+	return p
+
+# one-shot spark burst at a hit location, auto-frees
+func spawn_hit_sparks(pos: Vector3) -> void:
+	var p := CPUParticles3D.new()
+	p.one_shot = true
+	p.emitting = true
+	p.explosiveness = 0.95
+	p.amount = 14
+	p.lifetime = 0.4
+	p.mesh = _spark_mesh
+	p.direction = Vector3.UP
+	p.spread = 90.0
+	p.gravity = Vector3(0, -9.0, 0)
+	p.initial_velocity_min = 3.0
+	p.initial_velocity_max = 6.5
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.0
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1.0, 0.95, 0.55, 1.0))
+	ramp.set_color(1, Color(1.0, 0.5, 0.1, 0.0))
+	p.color_ramp = ramp
+	add_child(p)
+	p.global_position = pos
+	get_tree().create_timer(0.9).timeout.connect(p.queue_free)
 
 # ---------------- actors / game flow ----------------
 

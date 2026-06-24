@@ -73,6 +73,7 @@ var anim: AnimationPlayer
 var weapon_holder: BoneAttachment3D
 var shield_holder: BoneAttachment3D
 var helmet_node: Node = null
+var dust: CPUParticles3D
 var idle_anim := "Idle"
 var run_anim := "Running_A"
 var cur_anim := ""
@@ -99,7 +100,39 @@ func _ready() -> void:
 	cam.fov = 70.0
 	add_child(cam)
 	cam.current = true
+	_build_dust()
 	set_character(0)
+
+func _build_dust() -> void:
+	dust = CPUParticles3D.new()
+	dust.amount = 10
+	dust.lifetime = 0.5
+	dust.emitting = false
+	dust.local_coords = false
+	dust.direction = Vector3.UP
+	dust.spread = 38.0
+	dust.gravity = Vector3(0, 1.0, 0)
+	dust.initial_velocity_min = 0.3
+	dust.initial_velocity_max = 0.8
+	dust.scale_amount_min = 0.4
+	dust.scale_amount_max = 0.9
+	var q := QuadMesh.new()
+	q.size = Vector2(0.28, 0.28)
+	var dm := StandardMaterial3D.new()
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.vertex_color_use_as_albedo = true
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	dm.billboard_keep_scale = true
+	q.material = dm
+	dust.mesh = q
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(0.72, 0.64, 0.5, 0.0))
+	ramp.set_color(1, Color(0.6, 0.52, 0.4, 0.0))
+	ramp.add_point(0.3, Color(0.7, 0.62, 0.48, 0.4))
+	dust.color_ramp = ramp
+	dust.position = Vector3(0, 0.1, 0)
+	add_child(dust)
 
 func _model_path(id: int) -> String:
 	match id:
@@ -325,6 +358,8 @@ func _physics_process(delta: float) -> void:
 			anim_lock = anim.get_animation(attack_anim).length * 0.9
 
 	move_and_slide()
+	if dust:
+		dust.emitting = (moving or dodge_t > 0.0) and is_on_floor()
 	_update_anim(moving)
 	_update_camera()
 
@@ -356,6 +391,8 @@ func _do_attack() -> void:
 		if to.length() < atk_reach and f.dot(to.normalized()) > 0.1:
 			e.take_damage(atk_dmg + dmg_bonus)
 			Sfx.hit()
+			if main and main.has_method("spawn_hit_sparks"):
+				main.spawn_hit_sparks(e.global_position + Vector3.UP * 1.2)
 
 func _nearest_enemy():
 	var best = null
