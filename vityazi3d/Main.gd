@@ -111,6 +111,7 @@ func _ready() -> void:
 	_spawn_player()
 	_setup_ui()
 	_build_preview_studio()
+	_setup_minimap()
 	_load_settings()
 	_apply_quality()
 	state = "menu"
@@ -118,6 +119,18 @@ func _ready() -> void:
 
 	if "--selftest" in OS.get_cmdline_user_args():
 		_run_selftest()
+
+func _setup_minimap() -> void:
+	controls.map_world = WORLD
+	var cs := []
+	for c in cities:
+		cs.append({"pos": Vector2(c["pos"].x, c["pos"].z), "name": c["name"]})
+	controls.map_cities = cs
+	var vs := []
+	for vc in village_centers:
+		vs.append(Vector2(vc.x, vc.z))
+	controls.map_villages = vs
+	controls.map_saray = Vector2(SARAY_POS.x, SARAY_POS.z)
 
 func _load_settings() -> void:
 	var cf := ConfigFile.new()
@@ -229,24 +242,25 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.5
+	env.ambient_light_energy = 0.32
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.78, 0.82, 0.85)
-	env.fog_density = 0.0013
+	env.fog_light_color = Color(0.68, 0.72, 0.76)
+	env.fog_density = 0.0011
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	# subtle bloom so torches, fire and rare-weapon glow read
+	env.tonemap_exposure = 0.85
+	# restrained bloom — only genuinely bright sources (fire, glow) bloom, not the whole scene
 	env.glow_enabled = true
-	env.glow_intensity = 0.5
-	env.glow_strength = 0.9
-	env.glow_bloom = 0.08
-	env.glow_hdr_threshold = 1.05
+	env.glow_intensity = 0.28
+	env.glow_strength = 0.7
+	env.glow_bloom = 0.02
+	env.glow_hdr_threshold = 1.4
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
 	we.environment = env
 	add_child(we)
 
 	sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, -120, 0)
-	sun.light_energy = 1.15
+	sun.light_energy = 0.95
 	sun.light_color = Color(1.0, 0.96, 0.88)
 	sun.shadow_enabled = true
 	add_child(sun)
@@ -256,12 +270,12 @@ func _update_daynight(delta: float) -> void:
 	var s := sin(day_t * TAU)
 	var up := clampf((s + 1.0) * 0.5, 0.0, 1.0)
 	sun.rotation_degrees = Vector3(lerp(-3.0, -85.0, up), -120.0, 0.0)
-	sun.light_energy = lerp(0.06, 1.2, up)
+	sun.light_energy = lerp(0.05, 0.95, up)
 	sun.light_color = Color(1.0, 0.7, 0.5).lerp(Color(1.0, 0.96, 0.88), up)
-	sky_mat.sky_top_color = Color(0.05, 0.06, 0.12).lerp(Color(0.32, 0.5, 0.74), up)
-	sky_mat.sky_horizon_color = Color(0.12, 0.11, 0.2).lerp(Color(0.80, 0.82, 0.83), up)
-	env.ambient_light_energy = lerp(0.2, 0.6, up)
-	env.fog_light_color = Color(0.10, 0.12, 0.22).lerp(Color(0.78, 0.82, 0.85), up)
+	sky_mat.sky_top_color = Color(0.05, 0.06, 0.12).lerp(Color(0.30, 0.47, 0.70), up)
+	sky_mat.sky_horizon_color = Color(0.12, 0.11, 0.2).lerp(Color(0.74, 0.78, 0.80), up)
+	env.ambient_light_energy = lerp(0.16, 0.4, up)
+	env.fog_light_color = Color(0.10, 0.12, 0.22).lerp(Color(0.68, 0.72, 0.76), up)
 
 # ---------------- terrain ----------------
 
@@ -1438,6 +1452,9 @@ func _process(delta: float) -> void:
 		controls.hp_frac = clampf(player.hp / player.max_hp, 0.0, 1.0)
 		controls.kills = kills
 		controls.gold = player.gold
+		controls.player_pos = Vector2(player.global_position.x, player.global_position.z)
+		if player.model:
+			controls.player_yaw = player.model.rotation.y
 		if quest_active and quest_idx < quests.size():
 			var q = quests[quest_idx]
 			controls.quest_hud = "%s  %d/%d" % [q["title"], _quest_progress(), q["target"]]

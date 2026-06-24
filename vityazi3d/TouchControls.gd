@@ -21,6 +21,13 @@ var kills := 0
 var gold := 0
 var can_interact := false
 var region := ""
+# minimap
+var map_world := 460.0
+var map_cities: Array = []     # [{pos:Vector2, name}]
+var map_villages: Array = []   # [Vector2]
+var map_saray := Vector2.ZERO
+var player_pos := Vector2.ZERO
+var player_yaw := 0.0
 var toast := ""
 var toast_t := 0.0
 
@@ -398,14 +405,15 @@ func _draw_play() -> void:
 	draw_rect(Rect2(bx, by, bw, bh), Color(0.85, 0.7, 0.3, 0.9), false, 2.0)
 	if font:
 		draw_string(font, Vector2(bx + 8, by + 19), "ВИТЯЗЬ", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
-		draw_string(font, Vector2(v.x - 24, by + 20), "Золото: %d   Повержено: %d" % [gold, kills], HORIZONTAL_ALIGNMENT_RIGHT, -1, 20, Color(0.95, 0.85, 0.4))
+		draw_string(font, Vector2(bx, by + 20), "Золото: %d   Повержено: %d" % [gold, kills], HORIZONTAL_ALIGNMENT_RIGHT, v.x - bx - 26.0, 20, Color(0.95, 0.85, 0.4))
 		if region != "":
-			draw_string(font, Vector2(v.x * 0.5, by + 18), "⌖ " + region, HORIZONTAL_ALIGNMENT_CENTER, -1, 18, Color(0.85, 0.9, 1.0))
+			draw_string(font, Vector2(0, by + 18), "⌖ " + region, HORIZONTAL_ALIGNMENT_CENTER, v.x, 18, Color(0.85, 0.9, 1.0))
 		if quest_hud != "":
 			draw_string(font, Vector2(bx + 4, by + bh + 24), "✦ " + quest_hud, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.55, 0.9, 0.55))
 		if toast_t > 0.0:
 			var a := clampf(toast_t / 2.5, 0.0, 1.0)
-			draw_string(font, Vector2(v.x * 0.5, by + 70), toast, HORIZONTAL_ALIGNMENT_CENTER, -1, 24, Color(1, 1, 0.7, a))
+			draw_string(font, Vector2(0, by + 70), toast, HORIZONTAL_ALIGNMENT_CENTER, v.x, 24, Color(1, 1, 0.7, a))
+	_draw_minimap()
 
 func _draw_shop() -> void:
 	var v := _vp()
@@ -416,7 +424,7 @@ func _draw_shop() -> void:
 	draw_rect(p, Color(0.85, 0.7, 0.3, 0.9), false, 3.0)
 	if font:
 		draw_string(font, Vector2(p.position.x + 20, p.position.y + 42), "ЛАВКА ТОРГОВЦА", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(0.95, 0.85, 0.4))
-		draw_string(font, Vector2(p.position.x + p.size.x * 0.5 - 70, p.position.y + 42), "Золото: %d" % gold, HORIZONTAL_ALIGNMENT_RIGHT, -1, 20, Color(0.95, 0.85, 0.4))
+		draw_string(font, Vector2(p.position.x + 20, p.position.y + 42), "Золото: %d" % gold, HORIZONTAL_ALIGNMENT_RIGHT, p.size.x * 0.46 - 20.0, 20, Color(0.95, 0.85, 0.4))
 	var cl := _shop_close()
 	draw_rect(cl, Color(0.4, 0.15, 0.13))
 	if font:
@@ -438,10 +446,10 @@ func _draw_shop() -> void:
 			var nmcol := Color.WHITE
 			if st == "owned": nmcol = Color(0.55, 0.85, 0.5)
 			elif st == "poor": nmcol = Color(0.7, 0.55, 0.55)
-			draw_string(font, r.position + Vector2(10, 23), String(row.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 90, 16, nmcol)
+			draw_string(font, r.position + Vector2(10, 23), String(row.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 86, 16, nmcol)
 			var ptxt := "✓" if st == "owned" else ("%d з." % int(row.get("price", 0)))
 			var pcol := Color(0.55, 0.85, 0.5) if st == "owned" else (Color(0.95, 0.85, 0.4) if st != "poor" else Color(0.8, 0.45, 0.4))
-			draw_string(font, Vector2(r.position.x + r.size.x - 14, r.position.y + 23), ptxt, HORIZONTAL_ALIGNMENT_RIGHT, -1, 16, pcol)
+			draw_string(font, Vector2(r.position.x, r.position.y + 23), ptxt, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 10.0, 16, pcol)
 	# scroll buttons
 	var su := _shop_scroll_up()
 	var sd := _shop_scroll_down()
@@ -475,6 +483,35 @@ func _draw_shop() -> void:
 	draw_rect(br, Color(0.6, 0.85, 0.5) if shop_buy_state == "ok" else Color(0.5, 0.45, 0.4), false, 2.5)
 	if font:
 		draw_string(font, Vector2(br.position.x, br.position.y + 34), shop_buy_text, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, 22, Color.WHITE)
+
+func _map_pt(w: Vector2, m: Rect2) -> Vector2:
+	var nx := clampf(w.x / map_world * 0.5 + 0.5, 0.0, 1.0)
+	var ny := clampf(w.y / map_world * 0.5 + 0.5, 0.0, 1.0)
+	return m.position + Vector2(nx * m.size.x, ny * m.size.y)
+
+func _draw_minimap() -> void:
+	if state != 1:
+		return
+	var v := _vp()
+	var font := ThemeDB.fallback_font
+	var s := 168.0
+	var m := Rect2(v.x - s - 16.0, 150.0, s, s)
+	draw_rect(m, Color(0.07, 0.09, 0.12, 0.72))
+	draw_rect(m, Color(0.85, 0.7, 0.3, 0.85), false, 2.0)
+	for vc in map_villages:
+		draw_circle(_map_pt(vc, m), 2.6, Color(0.6, 0.78, 0.55))
+	for c in map_cities:
+		var pt := _map_pt(c["pos"], m)
+		draw_rect(Rect2(pt.x - 4, pt.y - 4, 8, 8), Color(0.95, 0.85, 0.4))
+	var sp := _map_pt(map_saray, m)
+	draw_rect(Rect2(sp.x - 4, sp.y - 4, 8, 8), Color(0.85, 0.22, 0.18))
+	# player arrow (heading)
+	var pp := _map_pt(player_pos, m)
+	var fwd := Vector2(sin(player_yaw), cos(player_yaw))
+	var rgt := Vector2(fwd.y, -fwd.x)
+	draw_colored_polygon(PackedVector2Array([pp + fwd * 7.0, pp - fwd * 4.0 + rgt * 4.0, pp - fwd * 4.0 - rgt * 4.0]), Color.WHITE)
+	if font:
+		draw_string(font, Vector2(m.position.x + 6, m.position.y + 16), "С", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.8, 0.85, 0.95))
 
 func _draw_item_icon(r: Rect2, icon: String) -> void:
 	var c := r.position + r.size * 0.5
@@ -593,8 +630,8 @@ func _draw_menu() -> void:
 	var font := ThemeDB.fallback_font
 	draw_rect(Rect2(0, 0, v.x, v.y), Color(0, 0, 0, 0.45))
 	if font:
-		draw_string(font, Vector2(v.x * 0.5, v.y * 0.16), "ВИТЯЗИ НОВГОРОДА", HORIZONTAL_ALIGNMENT_CENTER, -1, 46, Color(0.9, 0.78, 0.4))
-		draw_string(font, Vector2(v.x * 0.5, v.y * 0.24), "Выбери витязя", HORIZONTAL_ALIGNMENT_CENTER, -1, 24, Color.WHITE)
+		draw_string(font, Vector2(0, v.y * 0.16), "ВИТЯЗИ НОВГОРОДА", HORIZONTAL_ALIGNMENT_CENTER, v.x, 46, Color(0.9, 0.78, 0.4))
+		draw_string(font, Vector2(0, v.y * 0.24), "Выбери витязя", HORIZONTAL_ALIGNMENT_CENTER, v.x, 24, Color.WHITE)
 	for i in range(3):
 		var r := _char_rect(i)
 		var c: Color = CHARS[i][2]
@@ -604,8 +641,8 @@ func _draw_menu() -> void:
 		var cy := r.position.y + r.size.y * 0.42
 		draw_circle(Vector2(cx, cy), r.size.x * 0.20, c)
 		if font:
-			draw_string(font, Vector2(cx, r.position.y + r.size.y * 0.74), CHARS[i][0], HORIZONTAL_ALIGNMENT_CENTER, -1, 30, Color.WHITE)
-			draw_string(font, Vector2(cx, r.position.y + r.size.y * 0.86), CHARS[i][1], HORIZONTAL_ALIGNMENT_CENTER, -1, 22, Color(0.85, 0.85, 0.85))
+			draw_string(font, Vector2(r.position.x, r.position.y + r.size.y * 0.74), CHARS[i][0], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 30, Color.WHITE)
+			draw_string(font, Vector2(r.position.x, r.position.y + r.size.y * 0.86), CHARS[i][1], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 22, Color(0.85, 0.85, 0.85))
 	# graphics quality toggle
 	var qb := _quality_btn()
 	draw_rect(qb, Color(0.14, 0.16, 0.20, 0.95))
@@ -618,6 +655,6 @@ func _draw_end(title: String, col: Color) -> void:
 	var font := ThemeDB.fallback_font
 	draw_rect(Rect2(0, 0, v.x, v.y), Color(0, 0, 0, 0.6))
 	if font:
-		draw_string(font, Vector2(v.x * 0.5, v.y * 0.42), title, HORIZONTAL_ALIGNMENT_CENTER, -1, 56, col)
-		draw_string(font, Vector2(v.x * 0.5, v.y * 0.54), "Повержено врагов: %d   Золото: %d" % [kills, gold], HORIZONTAL_ALIGNMENT_CENTER, -1, 24, Color.WHITE)
-		draw_string(font, Vector2(v.x * 0.5, v.y * 0.66), "Коснись, чтобы вернуться в меню", HORIZONTAL_ALIGNMENT_CENTER, -1, 22, Color(0.85, 0.85, 0.85))
+		draw_string(font, Vector2(0, v.y * 0.42), title, HORIZONTAL_ALIGNMENT_CENTER, v.x, 56, col)
+		draw_string(font, Vector2(0, v.y * 0.54), "Повержено врагов: %d   Золото: %d" % [kills, gold], HORIZONTAL_ALIGNMENT_CENTER, v.x, 24, Color.WHITE)
+		draw_string(font, Vector2(0, v.y * 0.66), "Коснись, чтобы вернуться в меню", HORIZONTAL_ALIGNMENT_CENTER, v.x, 22, Color(0.85, 0.85, 0.85))
