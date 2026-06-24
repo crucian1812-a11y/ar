@@ -80,6 +80,7 @@ var cur_anim := ""
 var attack_cd := 0.0
 var anim_lock := 0.0
 var hurt_t := 0.0
+var step_t := 0.0
 
 const HIDE_KEYS := ["Sword", "Axe", "Shield", "Crossbow", "Knife", "Throwable",
 	"Mug", "Offhand", "Badge", "Spike", "Rectangle", "Round", "Bow", "Cape"]
@@ -360,6 +361,17 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	if dust:
 		dust.emitting = (moving or dodge_t > 0.0) and is_on_floor()
+	# footsteps timed to the run cadence
+	if moving and is_on_floor() and dodge_t <= 0.0:
+		step_t -= delta
+		if step_t <= 0.0:
+			step_t = 0.34
+			var surf := "grass"
+			if main and main.has_method("surface_at"):
+				surf = main.surface_at(global_position)
+			Sfx.step(surf)
+	else:
+		step_t = 0.0
 	_update_anim(moving)
 	_update_camera()
 

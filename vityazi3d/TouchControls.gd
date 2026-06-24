@@ -10,6 +10,8 @@ var _attack := false
 
 var chosen := -1
 var restart := false
+var quality_label := "Графика: Высокая"
+var _quality := false
 var _interact := false
 var _buy := -1
 var _close := false
@@ -74,6 +76,8 @@ func consume_look() -> float:
 	var l := look_dx; look_dx = 0.0; return l
 func consume_chosen() -> int:
 	var c := chosen; chosen = -1; return c
+func consume_quality() -> bool:
+	var q := _quality; _quality = false; return q
 func consume_restart() -> bool:
 	var r := restart; restart = false; return r
 func consume_interact() -> bool:
@@ -142,6 +146,10 @@ func _char_rect(i: int) -> Rect2:
 	var total := 3.0 * w + 2.0 * gap
 	var x0 := (v.x - total) * 0.5
 	return Rect2(x0 + i * (w + gap), v.y * 0.52 - h * 0.5, w, h)
+
+func _quality_btn() -> Rect2:
+	var v := _vp()
+	return Rect2(v.x * 0.5 - 150.0, v.y * 0.88, 300.0, 52.0)
 
 func _shop_panel() -> Rect2:
 	var v := _vp()
@@ -221,6 +229,9 @@ func _press_pos(e: InputEvent) -> Vector2:
 	return e.position
 
 func _menu_tap(p: Vector2) -> void:
+	if _quality_btn().has_point(p):
+		_quality = true
+		return
 	for i in range(3):
 		if _char_rect(i).has_point(p):
 			chosen = i
@@ -469,6 +480,12 @@ func _draw_menu() -> void:
 		if font:
 			draw_string(font, Vector2(cx, r.position.y + r.size.y * 0.74), CHARS[i][0], HORIZONTAL_ALIGNMENT_CENTER, -1, 30, Color.WHITE)
 			draw_string(font, Vector2(cx, r.position.y + r.size.y * 0.86), CHARS[i][1], HORIZONTAL_ALIGNMENT_CENTER, -1, 22, Color(0.85, 0.85, 0.85))
+	# graphics quality toggle
+	var qb := _quality_btn()
+	draw_rect(qb, Color(0.14, 0.16, 0.20, 0.95))
+	draw_rect(qb, Color(0.55, 0.6, 0.7, 0.9), false, 2.0)
+	if font:
+		draw_string(font, Vector2(qb.position.x, qb.position.y + 34), quality_label + "  ⟳", HORIZONTAL_ALIGNMENT_CENTER, qb.size.x, 22, Color(0.88, 0.9, 0.95))
 
 func _draw_end(title: String, col: Color) -> void:
 	var v := _vp()

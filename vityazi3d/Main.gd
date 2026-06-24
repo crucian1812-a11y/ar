@@ -61,6 +61,11 @@ var alive := 0
 var boss_defeated := false
 var near_npc = null
 var current_region := ""
+var mood_t := 0.0
+
+# video quality (render scale etc.), persisted to user://settings.cfg
+const SETTINGS_PATH := "user://settings.cfg"
+var quality := "high"
 
 # day/night
 var sky_mat: ProceduralSkyMaterial
@@ -119,11 +124,45 @@ func _ready() -> void:
 	_build_saray_structures()
 	_spawn_player()
 	_setup_ui()
+	_load_settings()
+	_apply_quality()
 	state = "menu"
 	controls.state = 0
 
 	if "--selftest" in OS.get_cmdline_user_args():
 		_run_selftest()
+
+func _load_settings() -> void:
+	var cf := ConfigFile.new()
+	if cf.load(SETTINGS_PATH) == OK:
+		quality = str(cf.get_value("video", "quality", "high"))
+
+func _save_settings() -> void:
+	var cf := ConfigFile.new()
+	cf.set_value("video", "quality", quality)
+	cf.save(SETTINGS_PATH)
+
+func _apply_quality() -> void:
+	var vp := get_viewport()
+	if quality == "low":
+		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		vp.scaling_3d_scale = 0.7
+		vp.msaa_3d = Viewport.MSAA_DISABLED
+		if env: env.glow_enabled = false
+		if sun: sun.shadow_enabled = false
+	else:
+		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		vp.scaling_3d_scale = 1.0
+		vp.msaa_3d = Viewport.MSAA_2X
+		if env: env.glow_enabled = true
+		if sun: sun.shadow_enabled = true
+	if controls:
+		controls.quality_label = "Графика: " + ("Низкая" if quality == "low" else "Высокая")
+
+func toggle_quality() -> void:
+	quality = "high" if quality == "low" else "low"
+	_apply_quality()
+	_save_settings()
 
 func _build_flat_zones() -> void:
 	flat_zones.clear()
@@ -1040,6 +1079,8 @@ func start_game(id: int) -> void:
 	pickups_base = 0
 	state = "play"
 	controls.state = 1
+	mood_t = 0.0
+	Sfx.set_mood("calm")
 	_rebuild_saray_barrier()
 	_spawn_world_enemies()
 	_spawn_pickups()
@@ -1215,6 +1256,8 @@ func _process(delta: float) -> void:
 
 	match state:
 		"menu":
+			if controls.consume_quality():
+				toggle_quality()
 			var c: int = controls.consume_chosen()
 			if c >= 0:
 				start_game(c)
@@ -1222,6 +1265,7 @@ func _process(delta: float) -> void:
 			_update_interaction()
 			_update_region()
 			_update_saray()
+			_update_mood(delta)
 			if player.hp <= 0.0:
 				_game_over()
 				return
@@ -1286,6 +1330,32 @@ func _update_region() -> void:
 		if rname != "" and rname != "Сарай-Бату":
 			show_toast("Вы прибыли в город: " + rname)
 	controls.region = current_region
+
+func surface_at(pos: Vector3) -> String:
+	for c in cities:
+		if Vector2(pos.x - c["pos"].x, pos.z - c["pos"].z).length() < 42.0:
+			return "stone"
+	for vc in village_centers:
+		if Vector2(pos.x - vc.x, pos.z - vc.z).length() < 14.0:
+			return "dirt"
+	if Vector2(pos.x - SARAY_POS.x, pos.z - SARAY_POS.z).length() < 45.0:
+		return "dirt"
+	return "grass"
+
+func _update_mood(delta: float) -> void:
+	mood_t -= delta
+	if mood_t > 0.0:
+		return
+	mood_t = 0.3
+	var mood := "calm"
+	if player.global_position.distance_to(SARAY_POS) < 115.0:
+		mood = "horde"
+	else:
+		for e in get_tree().get_nodes_in_group("enemy"):
+			if e.global_position.distance_to(player.global_position) < 26.0:
+				mood = "combat"
+				break
+	Sfx.set_mood(mood)
 
 func _update_saray() -> void:
 	if saray_unlocked:
