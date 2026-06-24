@@ -17,6 +17,14 @@ var mscale := 0.8
 var home := Vector3.ZERO
 var gold_drop := 8
 
+# networking
+var net_id := -1
+var net_proxy := false          # client-side visual copy of a host enemy
+var net_target := Vector3.ZERO
+var net_yaw := 0.0
+var net_hpfrac := 1.0
+var net_moving := false
+
 const AGGRO := 22.0
 const GRAVITY := 22.0
 var attack_cd := 0.0
@@ -167,7 +175,27 @@ func _is_equip(n: String) -> bool:
 			return true
 	return false
 
+func _nearest_player():
+	var best = null
+	var bd := 1e18
+	for p in get_tree().get_nodes_in_group("player"):
+		var d: float = p.global_position.distance_to(global_position)
+		if d < bd:
+			bd = d; best = p
+	return best
+
 func _physics_process(delta: float) -> void:
+	if net_proxy:
+		# client-side: just follow the host's transform/hp, no AI or physics
+		var f := clampf(delta * 12.0, 0.0, 1.0)
+		global_position = global_position.lerp(net_target, f)
+		if model:
+			model.rotation.y = lerp_angle(model.rotation.y, net_yaw, f)
+		hp = net_hpfrac * max_hp
+		_update_anim(net_moving)
+		_update_hpbar()
+		return
+
 	attack_cd = maxf(0.0, attack_cd - delta)
 	if hurt_t > 0.0: hurt_t -= delta
 	if anim_lock > 0.0: anim_lock -= delta
@@ -177,7 +205,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = maxf(velocity.y - GRAVITY * delta, -40.0)
 
-	var player = get_tree().get_first_node_in_group("player")
+	var player = _nearest_player()
 	var moving := false
 	if player:
 		var to: Vector3 = player.global_position - global_position
@@ -258,9 +286,15 @@ func _shoot(player) -> void:
 	pr.vel = (target - pr.global_position).normalized() * 18.0
 
 func take_damage(d: float) -> void:
+	# client proxy: don't resolve damage locally, ask the host to apply it
+	if net_proxy:
+		hurt_t = 0.12
+		if main and main.has_method("client_hit_enemy"):
+			main.client_hit_enemy(net_id, d)
+		return
 	hp -= d
 	hurt_t = 0.12
-	var player = get_tree().get_first_node_in_group("player")
+	var player = _nearest_player()
 	if player:
 		var away: Vector3 = (global_position - player.global_position).normalized()
 		velocity += away * (1.5 if (kind == Kind.BOSS or kind == Kind.KHAN) else 4.0)

@@ -12,6 +12,9 @@ var chosen := -1
 var restart := false
 var quality_label := "Графика: Высокая"
 var _quality := false
+var net_mode := "single"
+var net_status := ""
+var _net := -1
 var _interact := false
 var _close := false
 
@@ -105,6 +108,8 @@ func consume_chosen() -> int:
 	var c := chosen; chosen = -1; return c
 func consume_quality() -> bool:
 	var q := _quality; _quality = false; return q
+func consume_net() -> int:
+	var n := _net; _net = -1; return n
 func consume_restart() -> bool:
 	var r := restart; restart = false; return r
 func consume_interact() -> bool:
@@ -179,6 +184,14 @@ func _char_rect(i: int) -> Rect2:
 func _quality_btn() -> Rect2:
 	var v := _vp()
 	return Rect2(v.x * 0.5 - 150.0, v.y * 0.88, 300.0, 52.0)
+
+func _net_btn(i: int) -> Rect2:
+	var v := _vp()
+	var w := minf(240.0, (v.x - 120.0) / 3.0)
+	var gap := 16.0
+	var total := 3.0 * w + 2.0 * gap
+	var x0 := (v.x - total) * 0.5
+	return Rect2(x0 + i * (w + gap), v.y * 0.30, w, 46.0)
 
 func _shop_panel() -> Rect2:
 	var v := _vp()
@@ -278,6 +291,10 @@ func _menu_tap(p: Vector2) -> void:
 	if _quality_btn().has_point(p):
 		_quality = true
 		return
+	for i in range(3):
+		if _net_btn(i).has_point(p):
+			_net = i
+			return
 	for i in range(3):
 		if _char_rect(i).has_point(p):
 			chosen = i
@@ -632,6 +649,18 @@ func _draw_menu() -> void:
 	if font:
 		draw_string(font, Vector2(0, v.y * 0.16), "ВИТЯЗИ НОВГОРОДА", HORIZONTAL_ALIGNMENT_CENTER, v.x, 46, Color(0.9, 0.78, 0.4))
 		draw_string(font, Vector2(0, v.y * 0.24), "Выбери витязя", HORIZONTAL_ALIGNMENT_CENTER, v.x, 24, Color.WHITE)
+	# network mode buttons
+	var nlabels := ["Одиночная", "Создать Wi-Fi", "Найти игру"]
+	var nmodes := ["single", "host", "client"]
+	for i in range(3):
+		var nb := _net_btn(i)
+		var sel: bool = net_mode == nmodes[i]
+		draw_rect(nb, Color(0.20, 0.26, 0.20) if sel else Color(0.14, 0.15, 0.18, 0.95))
+		draw_rect(nb, Color(0.6, 0.9, 0.5, 0.95) if sel else Color(0.5, 0.55, 0.65, 0.85), false, 2.0)
+		if font:
+			draw_string(font, Vector2(nb.position.x, nb.position.y + 30), nlabels[i], HORIZONTAL_ALIGNMENT_CENTER, nb.size.x, 19, Color.WHITE)
+	if font and net_status != "":
+		draw_string(font, Vector2(0, v.y * 0.30 + 70.0), net_status, HORIZONTAL_ALIGNMENT_CENTER, v.x, 18, Color(0.7, 0.85, 1.0))
 	for i in range(3):
 		var r := _char_rect(i)
 		var c: Color = CHARS[i][2]

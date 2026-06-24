@@ -63,6 +63,13 @@ var near_npc = null
 var current_region := ""
 var mood_t := 0.0
 
+# multiplayer (LAN co-op)
+var net_mode := "single"        # single / host / client
+var remote_players := {}        # peer_id -> RemotePlayer
+var enemy_by_netid := {}        # net_id -> GameEnemy (host: real, client: proxy)
+var _enemy_seq := 0
+var _net_t := 0.0
+
 # video quality (render scale etc.), persisted to user://settings.cfg
 const SETTINGS_PATH := "user://settings.cfg"
 var quality := "high"
@@ -1095,19 +1102,61 @@ func _build_proc_weapon(kind: String, col: Color) -> Node3D:
 	var root := Node3D.new()
 	var steel := StandardMaterial3D.new(); steel.albedo_color = col; steel.metallic = 0.85; steel.roughness = 0.3
 	var wood := StandardMaterial3D.new(); wood.albedo_color = Color(0.32, 0.22, 0.13); wood.roughness = 0.9
-	var handle := MeshInstance3D.new()
-	var hc := CylinderMesh.new(); hc.top_radius = 0.035; hc.bottom_radius = 0.045; hc.height = 0.62
-	handle.mesh = hc; handle.material_override = wood; handle.position = Vector3(0, 0.31, 0)
-	root.add_child(handle)
-	var head := MeshInstance3D.new()
-	var sm := SphereMesh.new(); sm.radius = 0.11; sm.height = 0.22
-	head.mesh = sm; head.material_override = steel; head.position = Vector3(0, 0.66, 0)
-	root.add_child(head)
-	for d in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1), Vector3(0, 1, 0)]:
-		var stud := MeshInstance3D.new()
-		var bm := BoxMesh.new(); bm.size = Vector3(0.075, 0.075, 0.075)
-		stud.mesh = bm; stud.material_override = steel; stud.position = Vector3(0, 0.66, 0) + d * 0.12
-		root.add_child(stud)
+	match kind:
+		"helmet":
+			var dome := MeshInstance3D.new()
+			var sm := SphereMesh.new(); sm.radius = 0.32; sm.height = 0.42
+			dome.mesh = sm; dome.material_override = steel; dome.position = Vector3(0, 0.32, 0)
+			root.add_child(dome)
+			var tip := MeshInstance3D.new()
+			var tc := CylinderMesh.new(); tc.top_radius = 0.0; tc.bottom_radius = 0.07; tc.height = 0.18
+			tip.mesh = tc; tip.material_override = steel; tip.position = Vector3(0, 0.56, 0)
+			root.add_child(tip)
+			var rim := MeshInstance3D.new()
+			var rc := CylinderMesh.new(); rc.top_radius = 0.34; rc.bottom_radius = 0.34; rc.height = 0.07
+			rim.mesh = rc; rim.material_override = _flat(Color(0.4, 0.3, 0.18)); rim.position = Vector3(0, 0.2, 0)
+			root.add_child(rim)
+			var nasal := MeshInstance3D.new()
+			var nb := BoxMesh.new(); nb.size = Vector3(0.07, 0.22, 0.05)
+			nasal.mesh = nb; nasal.material_override = steel; nasal.position = Vector3(0, 0.18, 0.32)
+			root.add_child(nasal)
+		"mail", "plate":
+			var plate := kind == "plate"
+			var bcol := col if plate else Color(0.45, 0.46, 0.5)
+			var bm := StandardMaterial3D.new(); bm.albedo_color = bcol; bm.metallic = 0.7; bm.roughness = 0.6 if not plate else 0.3
+			var torso := MeshInstance3D.new()
+			if plate:
+				var tb := BoxMesh.new(); tb.size = Vector3(0.62, 0.7, 0.34)
+				torso.mesh = tb
+			else:
+				var tc2 := CylinderMesh.new(); tc2.top_radius = 0.32; tc2.bottom_radius = 0.36; tc2.height = 0.74
+				torso.mesh = tc2
+			torso.material_override = bm; torso.position = Vector3(0, 0.4, 0)
+			root.add_child(torso)
+			for sxx in [-1.0, 1.0]:
+				var sh := MeshInstance3D.new()
+				var ss := SphereMesh.new(); ss.radius = 0.16; ss.height = 0.26
+				sh.mesh = ss; sh.material_override = bm; sh.position = Vector3(sxx * 0.34, 0.72, 0)
+				root.add_child(sh)
+			var collar := MeshInstance3D.new()
+			var cc2 := CylinderMesh.new(); cc2.top_radius = 0.16; cc2.bottom_radius = 0.2; cc2.height = 0.12
+			collar.mesh = cc2; collar.material_override = bm; collar.position = Vector3(0, 0.8, 0)
+			root.add_child(collar)
+		_:
+			# mace / morning-star
+			var handle := MeshInstance3D.new()
+			var hc := CylinderMesh.new(); hc.top_radius = 0.035; hc.bottom_radius = 0.045; hc.height = 0.62
+			handle.mesh = hc; handle.material_override = wood; handle.position = Vector3(0, 0.31, 0)
+			root.add_child(handle)
+			var head := MeshInstance3D.new()
+			var sm2 := SphereMesh.new(); sm2.radius = 0.11; sm2.height = 0.22
+			head.mesh = sm2; head.material_override = steel; head.position = Vector3(0, 0.66, 0)
+			root.add_child(head)
+			for d in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1), Vector3(0, 1, 0)]:
+				var stud := MeshInstance3D.new()
+				var sb := BoxMesh.new(); sb.size = Vector3(0.075, 0.075, 0.075)
+				stud.mesh = sb; stud.material_override = steel; stud.position = Vector3(0, 0.66, 0) + d * 0.12
+				root.add_child(stud)
 	return root
 
 var preview_vp: SubViewport
@@ -1162,10 +1211,34 @@ func set_preview_weapon(w) -> void:
 	if preview_holder == null:
 		return
 	var inst := make_weapon_visual(w)
-	# stand the weapon upright and roughly centre it
-	inst.position = Vector3(0, 0.05, 0)
+	inst.transform = Transform3D.IDENTITY
 	preview_holder.add_child(inst)
-	preview_holder.rotation = Vector3(0, 0, 0)
+	preview_holder.rotation = Vector3.ZERO
+	# auto-frame: scale so the model's largest dimension fits, centre on the camera target
+	var ab := _node_aabb(inst)
+	if ab.size.length() > 0.0001:
+		var maxd: float = maxf(ab.size.x, maxf(ab.size.y, ab.size.z))
+		var s := 1.2 / maxd
+		inst.scale = Vector3.ONE * s
+		inst.position = Vector3(0, 0.45, 0) - ab.get_center() * s
+
+func _node_aabb(root: Node) -> AABB:
+	var has := false
+	var out := AABB()
+	var inv := (root as Node3D).global_transform.affine_inverse()
+	for m in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var a := (inv * mi.global_transform) * mi.mesh.get_aabb()
+		if not has:
+			out = a; has = true
+		else:
+			out = out.merge(a)
+	if root is MeshInstance3D and (root as MeshInstance3D).mesh != null:
+		var ra := (root as MeshInstance3D).mesh.get_aabb()
+		out = ra if not has else out.merge(ra)
+	return out
 
 # ---------------- actors / game flow ----------------
 
@@ -1205,8 +1278,12 @@ func start_game(id: int) -> void:
 	mood_t = 0.0
 	Sfx.set_mood("calm")
 	_rebuild_saray_barrier()
-	_spawn_world_enemies()
+	# enemies: single-player or host are authoritative; clients receive them over the network
+	if net_mode != "client":
+		_spawn_world_enemies()
 	_spawn_pickups()
+	if Net.active:
+		_net_t = 0.0
 
 func _clear_actors() -> void:
 	for e in get_tree().get_nodes_in_group("enemy"):
@@ -1215,7 +1292,106 @@ func _clear_actors() -> void:
 		p.queue_free()
 	for pk in get_tree().get_nodes_in_group("pickup"):
 		pk.queue_free()
+	for id in remote_players.keys():
+		if is_instance_valid(remote_players[id]):
+			remote_players[id].queue_free()
+	remote_players.clear()
+	enemy_by_netid.clear()
+	_enemy_seq = 0
 	alive = 0
+
+# ---------------- networking (LAN co-op) ----------------
+
+func _net_tick(delta: float) -> void:
+	if not Net.active:
+		return
+	_net_t -= delta
+	if _net_t > 0.0:
+		return
+	_net_t = 0.06
+	var mv: Vector3 = player.velocity
+	var moving := Vector2(mv.x, mv.z).length() > 0.6
+	var yaw: float = player.model.rotation.y if player.model else 0.0
+	rpc("_net_player_state", Net.my_id(), player.global_position.x, player.global_position.y,
+		player.global_position.z, yaw, moving, clampf(player.hp / player.max_hp, 0.0, 1.0), player.char_id)
+	if Net.is_host:
+		var arr := []
+		for e in get_tree().get_nodes_in_group("enemy"):
+			if e.net_id < 0:
+				continue
+			var em: float = 1.0 if e.velocity.length() > 0.5 else 0.0
+			arr.append([e.net_id, e.global_position.x, e.global_position.z,
+				(e.model.rotation.y if e.model else 0.0), clampf(e.hp / e.max_hp, 0.0, 1.0), int(e.kind), em])
+		rpc("_net_enemies", arr)
+
+@rpc("any_peer", "unreliable_ordered", "call_remote")
+func _net_player_state(id: int, px: float, py: float, pz: float, yaw: float, moving: bool, hpf: float, cid: int) -> void:
+	if id == Net.my_id():
+		return
+	var rp = remote_players.get(id)
+	if rp == null or not is_instance_valid(rp):
+		rp = preload("res://RemotePlayer.gd").new()
+		rp.peer_id = id
+		rp.main = self
+		add_child(rp)
+		rp.setup(int(cid))
+		rp.global_position = Vector3(px, py, pz)
+		remote_players[id] = rp
+		if Net.is_host:
+			rp.add_to_group("player")    # host enemies will target remote players too
+	rp.target_pos = Vector3(px, py, pz)
+	rp.target_yaw = yaw
+	rp.moving = moving
+	rp.hp_frac = hpf
+
+@rpc("authority", "unreliable", "call_remote")
+func _net_enemies(arr: Array) -> void:
+	if Net.is_host:
+		return
+	var seen := {}
+	for entry in arr:
+		var nid := int(entry[0])
+		seen[nid] = true
+		var e = enemy_by_netid.get(nid)
+		if e == null or not is_instance_valid(e):
+			e = GameEnemy.new()
+			e.kind = int(entry[5])
+			e.main = self
+			e.net_proxy = true
+			e.net_id = nid
+			add_child(e)
+			e.global_position = Vector3(entry[1], 0.0, entry[2])
+			enemy_by_netid[nid] = e
+		e.net_target = Vector3(entry[1], 0.0, entry[2])
+		e.net_yaw = float(entry[3])
+		e.net_hpfrac = float(entry[4])
+		e.net_moving = float(entry[6]) > 0.5
+	for nid in enemy_by_netid.keys():
+		if not seen.has(nid):
+			if is_instance_valid(enemy_by_netid[nid]):
+				enemy_by_netid[nid].queue_free()
+			enemy_by_netid.erase(nid)
+
+func client_hit_enemy(net_id: int, d: float) -> void:
+	if Net.active and not Net.is_host:
+		rpc_id(1, "_net_request_hit", net_id, d)
+
+@rpc("any_peer", "reliable", "call_remote")
+func _net_request_hit(net_id: int, d: float) -> void:
+	if not Net.is_host:
+		return
+	var e = enemy_by_netid.get(net_id)
+	if is_instance_valid(e):
+		e.take_damage(d)
+
+func host_damage_remote(peer_id: int, d: float) -> void:
+	if Net.is_host:
+		rpc_id(peer_id, "_net_apply_damage", d)
+
+@rpc("authority", "reliable", "call_remote")
+func _net_apply_damage(d: float) -> void:
+	if player:
+		player.take_damage(d)
 
 func _spawn_world_enemies() -> void:
 	var camps := [
@@ -1264,8 +1440,11 @@ func _make_enemy(kind: int, pos: Vector3) -> void:
 	e.main = self
 	e.home = pos
 	e.gold_drop = _gold_for(kind)
+	e.net_id = _enemy_seq
+	_enemy_seq += 1
 	add_child(e)
 	e.global_position = pos + Vector3(0, 3, 0)
+	enemy_by_netid[e.net_id] = e
 	alive += 1
 
 func _gold_for(kind: int) -> int:
@@ -1379,10 +1558,9 @@ func _shop_owned(item) -> bool:
 		_: return false
 
 func _shop_icon(item) -> String:
+	# "" -> rendered as a 3D model; otherwise a flat vector icon
 	match item["kind"]:
-		"weapon", "shield": return ""
-		"helmet": return "helmet"
-		"armortier": return "armor"
+		"weapon", "shield", "helmet", "armortier": return ""
 		"heal": return "heal"
 		"booster_str": return "str"
 		"booster_vit": return "vit"
@@ -1465,14 +1643,27 @@ func _process(delta: float) -> void:
 		"menu":
 			if controls.consume_quality():
 				toggle_quality()
+			var nm: int = controls.consume_net()
+			if nm == 0:
+				net_mode = "single"; Net.leave()
+			elif nm == 1:
+				net_mode = "host"; Net.host()
+			elif nm == 2:
+				net_mode = "client"; Net.discover()
+			controls.net_mode = net_mode
+			controls.net_status = Net.status
 			var c: int = controls.consume_chosen()
 			if c >= 0:
-				start_game(c)
+				if net_mode == "client" and not Net.connected:
+					show_toast("Сначала подключитесь к игре по Wi-Fi")
+				else:
+					start_game(c)
 		"play":
 			_update_interaction()
 			_update_region()
 			_update_saray()
 			_update_mood(delta)
+			_net_tick(delta)
 			if player.hp <= 0.0:
 				_game_over()
 				return
@@ -1709,10 +1900,11 @@ func _select_shop(i: int) -> void:
 	var icon := _shop_icon(item)
 	if icon == "":
 		controls.shop_is3d = true
-		if item["kind"] == "weapon":
-			set_preview_weapon(player.WEAPONS[int(item["v"])])
-		else:
-			set_preview_weapon({"model": player.SHIELDS[int(item["v"])]["model"]})
+		match item["kind"]:
+			"weapon": set_preview_weapon(player.WEAPONS[int(item["v"])])
+			"shield": set_preview_weapon({"model": player.SHIELDS[int(item["v"])]["model"]})
+			"helmet": set_preview_weapon({"model": "proc:helmet", "tint": Color(0.62, 0.64, 0.72)})
+			"armortier": set_preview_weapon({"model": ("proc:mail" if int(item["v"]) == 1 else "proc:plate"), "tint": Color(0.6, 0.62, 0.68)})
 	else:
 		controls.shop_is3d = false
 		controls.shop_icon = icon
