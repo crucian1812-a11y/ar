@@ -73,22 +73,8 @@ var env: Environment
 var sun: DirectionalLight3D
 var day_t := 0.16
 
-var shop := [
-	{"name": "Лечебное зелье (+40 HP)", "price": 25, "kind": "heal", "v": 40.0},
-	{"name": "Боевой топор", "price": 70, "kind": "weapon", "v": 2},
-	{"name": "Двуручный меч", "price": 150, "kind": "weapon", "v": 1},
-	{"name": "Секира", "price": 175, "kind": "weapon", "v": 3},
-	{"name": "Кинжал", "price": 55, "kind": "weapon", "v": 4},
-	{"name": "Копьё", "price": 120, "kind": "weapon", "v": 5},
-	{"name": "Арбалет (дальний бой)", "price": 170, "kind": "weapon", "v": 6},
-	{"name": "Меч", "price": 60, "kind": "weapon", "v": 0},
-	{"name": "Круглый щит", "price": 55, "kind": "shield", "v": 1},
-	{"name": "Большой щит", "price": 130, "kind": "shield", "v": 2},
-	{"name": "Шлем", "price": 50, "kind": "helmet", "v": 0},
-	{"name": "Кольчуга (броня)", "price": 90, "kind": "armortier", "v": 1},
-	{"name": "Латный доспех (броня)", "price": 200, "kind": "armortier", "v": 2},
-	{"name": "Эликсир силы (+40 макс HP)", "price": 120, "kind": "maxhp", "v": 40.0},
-]
+var shop := []          # rebuilt each time the shop opens
+var shop_sel := 0
 var _bag_items: Array = []   # parallel to controls.inv_bag: [{"kind","v"}]
 
 var quests := [
@@ -124,6 +110,7 @@ func _ready() -> void:
 	_build_saray_structures()
 	_spawn_player()
 	_setup_ui()
+	_build_preview_studio()
 	_load_settings()
 	_apply_quality()
 	state = "menu"
@@ -189,6 +176,23 @@ func _run_selftest() -> void:
 	player.equip_weapon(player.owned_weapons[0])
 	_refresh_inv()
 	print("SELFTEST inv slots=%d bag=%d dmg=%d" % [controls.inv_slots.size(), controls.inv_bag.size(), player.total_dmg()])
+	# exercise procedural weapon build (Булава) via the equip path
+	for i in range(player.WEAPONS.size()):
+		if String(player.WEAPONS[i].get("model", "")).begins_with("proc:"):
+			player.own_weapon(i); player.equip_weapon(i)
+			break
+	player.equip_weapon(0)
+	# exercise shop: build, preview every item, buy boosters + a weapon
+	player.gold = 99999
+	_build_shop()
+	for i in range(shop.size()):
+		_select_shop(i)      # builds 3D preview (gltf + proc) and stats for each
+	buy(shop[0]); buy(shop[0])   # strength x2
+	buy(shop[1])                 # vitality
+	for it in shop:
+		if it["kind"] == "weapon":
+			buy(it); break
+	print("SELFTEST shop items=%d str=%d vit=%d dmg=%d maxhp=%d" % [shop.size(), player.str_level, player.vit_level, player.total_dmg(), int(player.max_hp)])
 	# verify Сарай-Бату horde + gate unlock
 	var khans := 0
 	for e in get_tree().get_nodes_in_group("enemy"):
@@ -1044,6 +1048,111 @@ func spawn_hit_sparks(pos: Vector3) -> void:
 	p.global_position = pos
 	get_tree().create_timer(0.9).timeout.connect(p.queue_free)
 
+# ---------------- weapon visuals & 3D item preview ----------------
+
+func make_weapon_visual(w) -> Node3D:
+	var mp := String(w.get("model", ""))
+	var inst: Node3D
+	if mp.begins_with("proc:"):
+		inst = _build_proc_weapon(mp.substr(5), w.get("tint", Color(0.72, 0.74, 0.78)))
+	elif mp != "":
+		inst = load(mp).instantiate()
+		if w.has("tint"):
+			_tint_node(inst, w["tint"], w.get("rare", false))
+	else:
+		inst = Node3D.new()
+	return inst
+
+func _tint_node(node: Node, col: Color, glow: bool) -> void:
+	if node is MeshInstance3D:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = col
+		m.metallic = 0.85 if glow else 0.55
+		m.roughness = 0.25 if glow else 0.4
+		if glow:
+			m.emission_enabled = true
+			m.emission = col
+			m.emission_energy_multiplier = 0.5
+		node.material_override = m
+	for c in node.get_children():
+		_tint_node(c, col, glow)
+
+func _build_proc_weapon(kind: String, col: Color) -> Node3D:
+	var root := Node3D.new()
+	var steel := StandardMaterial3D.new(); steel.albedo_color = col; steel.metallic = 0.85; steel.roughness = 0.3
+	var wood := StandardMaterial3D.new(); wood.albedo_color = Color(0.32, 0.22, 0.13); wood.roughness = 0.9
+	var handle := MeshInstance3D.new()
+	var hc := CylinderMesh.new(); hc.top_radius = 0.035; hc.bottom_radius = 0.045; hc.height = 0.62
+	handle.mesh = hc; handle.material_override = wood; handle.position = Vector3(0, 0.31, 0)
+	root.add_child(handle)
+	var head := MeshInstance3D.new()
+	var sm := SphereMesh.new(); sm.radius = 0.11; sm.height = 0.22
+	head.mesh = sm; head.material_override = steel; head.position = Vector3(0, 0.66, 0)
+	root.add_child(head)
+	for d in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1), Vector3(0, 1, 0)]:
+		var stud := MeshInstance3D.new()
+		var bm := BoxMesh.new(); bm.size = Vector3(0.075, 0.075, 0.075)
+		stud.mesh = bm; stud.material_override = steel; stud.position = Vector3(0, 0.66, 0) + d * 0.12
+		root.add_child(stud)
+	return root
+
+var preview_vp: SubViewport
+var preview_holder: Node3D
+
+func _build_preview_studio() -> void:
+	# headless has no rendering scenario; skip (preview falls back to icons)
+	if DisplayServer.get_name() == "headless":
+		return
+	preview_vp = SubViewport.new()
+	preview_vp.size = Vector2i(340, 340)
+	preview_vp.transparent_bg = true
+	preview_vp.own_world_3d = true
+	preview_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(preview_vp)
+	preview_vp.world_3d = World3D.new()
+	var we := WorldEnvironment.new()
+	var pe := Environment.new()
+	pe.background_mode = Environment.BG_COLOR
+	pe.background_color = Color(0.10, 0.11, 0.14, 0.0)
+	pe.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	pe.ambient_light_color = Color(0.55, 0.56, 0.62)
+	pe.ambient_light_energy = 1.0
+	we.environment = pe
+	preview_vp.add_child(we)
+	var cam := Camera3D.new()
+	cam.fov = 32.0
+	cam.position = Vector3(0.0, 0.5, 2.6)
+	preview_vp.add_child(cam)
+	cam.look_at(Vector3(0, 0.45, 0), Vector3.UP)
+	var key := DirectionalLight3D.new()
+	key.rotation_degrees = Vector3(-35, -45, 0)
+	key.light_energy = 1.4
+	preview_vp.add_child(key)
+	var rim := DirectionalLight3D.new()
+	rim.rotation_degrees = Vector3(-10, 130, 0)
+	rim.light_energy = 0.5
+	rim.light_color = Color(0.7, 0.8, 1.0)
+	preview_vp.add_child(rim)
+	preview_holder = Node3D.new()
+	preview_vp.add_child(preview_holder)
+	if controls:
+		controls.preview_tex = preview_vp.get_texture()
+
+func _clear_preview() -> void:
+	if preview_holder:
+		for c in preview_holder.get_children():
+			c.queue_free()
+
+func set_preview_weapon(w) -> void:
+	_clear_preview()
+	if preview_holder == null:
+		return
+	var inst := make_weapon_visual(w)
+	# stand the weapon upright and roughly centre it
+	inst.position = Vector3(0, 0.05, 0)
+	preview_holder.add_child(inst)
+	preview_holder.rotation = Vector3(0, 0, 0)
+
 # ---------------- actors / game flow ----------------
 
 func _spawn_player() -> void:
@@ -1210,39 +1319,120 @@ func show_toast(text: String) -> void:
 		controls.toast = text
 		controls.toast_t = 2.5
 
+func _build_shop() -> void:
+	shop = []
+	shop.append({"kind": "booster_str"})
+	shop.append({"kind": "booster_vit"})
+	shop.append({"kind": "heal", "v": 40.0, "name": "Лечебное зелье", "price": 25})
+	shop.append({"kind": "helmet", "v": 0, "name": "Шлем", "price": 50})
+	shop.append({"kind": "armortier", "v": 1, "name": "Кольчуга", "price": 90})
+	shop.append({"kind": "armortier", "v": 2, "name": "Латный доспех", "price": 200})
+	shop.append({"kind": "shield", "v": 1, "name": player.SHIELDS[1]["name"], "price": int(player.SHIELDS[1]["price"])})
+	shop.append({"kind": "shield", "v": 2, "name": player.SHIELDS[2]["name"], "price": int(player.SHIELDS[2]["price"])})
+	# weapons (non-rare, with a price), sorted cheapest first
+	var ws := []
+	for i in range(player.WEAPONS.size()):
+		var w = player.WEAPONS[i]
+		if w.get("rare", false) or not w.has("price"):
+			continue
+		ws.append(i)
+	ws.sort_custom(func(a, b): return int(player.WEAPONS[a]["price"]) < int(player.WEAPONS[b]["price"]))
+	for i in ws:
+		shop.append({"kind": "weapon", "v": i})
+
+func _shop_name(item) -> String:
+	match item["kind"]:
+		"booster_str": return "Сила  (ур. %d/%d)" % [player.str_level, player.STR_MAX]
+		"booster_vit": return "Здоровье  (ур. %d/%d)" % [player.vit_level, player.VIT_MAX]
+		"weapon": return String(player.WEAPONS[int(item["v"])]["name"])
+		_: return String(item["name"])
+
+func _shop_price(item) -> int:
+	match item["kind"]:
+		"booster_str": return 80 + player.str_level * 45
+		"booster_vit": return 70 + player.vit_level * 40
+		"weapon": return int(player.WEAPONS[int(item["v"])]["price"])
+		_: return int(item["price"])
+
 func _shop_owned(item) -> bool:
 	match item["kind"]:
 		"weapon": return int(item["v"]) in player.owned_weapons
 		"shield": return int(item["v"]) in player.owned_shields
 		"helmet": return player.helmet_owned
 		"armortier": return int(item["v"]) in player.owned_armors
+		"booster_str": return not player.can_buy_strength()
+		"booster_vit": return not player.can_buy_vitality()
 		_: return false
 
-func buy(index: int) -> void:
-	if index < 0 or index >= shop.size():
-		return
-	var item = shop[index]
+func _shop_icon(item) -> String:
+	match item["kind"]:
+		"weapon", "shield": return ""
+		"helmet": return "helmet"
+		"armortier": return "armor"
+		"heal": return "heal"
+		"booster_str": return "str"
+		"booster_vit": return "vit"
+		_: return "heal"
+
+func _shop_stats(item) -> Array:
+	var s := []
+	match item["kind"]:
+		"weapon":
+			var w = player.WEAPONS[int(item["v"])]
+			s.append("Класс:  " + String(w["cls"]))
+			s.append("Урон:  %d" % int(w["dmg"]))
+			s.append("Досягаемость:  %.1f м" % float(w["reach"]))
+			s.append("Скорость:  %.1f уд/с" % (1.0 / float(w["cd"])))
+			s.append("Хват:  " + ("двуручный" if w.get("two", false) else "одноручный"))
+			if w.get("ranged", false):
+				s.append("• дальний бой")
+			if w.has("tint") and not w.get("rare", false):
+				s.append("• улучшенная ковка")
+		"shield":
+			s.append("Тип:  щит")
+			s.append("Броня:  +%d%%" % int(float(player.SHIELDS[int(item["v"])]["armor"]) * 100))
+			s.append("(нельзя с двуручным)")
+		"helmet":
+			s.append("Тип:  шлем")
+			s.append("Броня:  +6%")
+		"armortier":
+			s.append("Тип:  доспех")
+			s.append("Броня:  +%d%%" % int(player.ARMOR_TIERS[int(item["v"])] * 100))
+		"heal":
+			s.append("Мгновенно лечит 40 HP")
+		"booster_str":
+			s.append("+%d к урону за уровень" % int(player.STR_STEP))
+			s.append("Текущий бонус:  +%d" % int(player.str_level * player.STR_STEP))
+		"booster_vit":
+			s.append("+%d к макс. HP за уровень" % int(player.VIT_STEP))
+			s.append("Текущий бонус:  +%d HP" % int(player.vit_level * player.VIT_STEP))
+	return s
+
+func buy(item) -> void:
 	if _shop_owned(item):
 		show_toast("Уже куплено")
 		return
-	if player.gold < item["price"]:
+	var price := _shop_price(item)
+	if player.gold < price:
 		show_toast("Не хватает золота")
 		return
-	player.gold -= item["price"]
+	player.gold -= price
 	match item["kind"]:
-		"heal": player.heal(item["v"])
-		"maxhp": player.add_maxhp(item["v"])
+		"heal": player.heal(40.0); show_toast("Зелье выпито: +40 HP")
+		"booster_str": player.buy_strength(); show_toast("Сила повышена! Урон +%d" % int(player.STR_STEP))
+		"booster_vit": player.buy_vitality(); show_toast("Здоровье повышено! Макс. HP +%d" % int(player.VIT_STEP))
 		"weapon": player.own_weapon(int(item["v"])); show_toast("Куплено! Наденьте в снаряжении (☰)")
 		"shield": player.own_shield(int(item["v"])); show_toast("Куплено! Наденьте в снаряжении (☰)")
 		"helmet": player.helmet_owned = true; show_toast("Шлем куплен — наденьте в снаряжении (☰)")
 		"armortier": player.own_armor(int(item["v"])); show_toast("Доспех куплен — наденьте в снаряжении (☰)")
-	if item["kind"] in ["heal", "maxhp"]:
-		show_toast("Куплено: " + item["name"])
 	Sfx.buy()
 	_refresh_shop_state()
+	_select_shop(shop_sel)
 
 func _process(delta: float) -> void:
 	_update_daynight(delta)
+	if preview_holder and (state == "shop" or state == "inv"):
+		preview_holder.rotate_y(delta * 0.9)
 
 	if controls and player:
 		controls.hp_frac = clampf(player.hp / player.max_hp, 0.0, 1.0)
@@ -1288,13 +1478,17 @@ func _process(delta: float) -> void:
 			if controls.consume_close():
 				state = "play"
 				controls.state = 1
+				_clear_preview()
 		"shop":
-			var bi: int = controls.consume_buy()
-			if bi >= 0:
-				buy(bi)
+			var sel: int = controls.consume_shop_select()
+			if sel >= 0 and sel < shop.size():
+				_select_shop(sel)
+			if controls.consume_shop_buy():
+				buy(shop[shop_sel])
 			if controls.consume_close():
 				state = "play"
 				controls.state = 1
+				_clear_preview()
 		"quest":
 			if controls.consume_quest():
 				_quest_action()
@@ -1408,7 +1602,7 @@ func _refresh_inv() -> void:
 	var items := []
 	for wi in player.owned_weapons:
 		if wi != player.equipped_weapon:
-			bag.append({"name": player.WEAPONS[wi]["name"], "rare": player.WEAPONS[wi].get("rare", false), "tag": "Оружие"})
+			bag.append({"name": player.WEAPONS[wi]["name"], "rare": player.WEAPONS[wi].get("rare", false), "tag": String(player.WEAPONS[wi].get("cls", "Оружие"))})
 			items.append({"kind": "w", "v": wi})
 	for si in player.owned_shields:
 		if si >= 1 and si != player.equipped_shield:
@@ -1426,6 +1620,24 @@ func _refresh_inv() -> void:
 
 	controls.inv_stats = "Урон: %d     Броня: %d%%     HP: %d/%d     Золото: %d" % [
 		player.total_dmg(), int(player.armor * 100), int(player.hp), int(player.max_hp), player.gold]
+
+	# equipped-weapon 3D preview + its stat lines
+	if player.equipped_weapon >= 0:
+		var w = player.WEAPONS[player.equipped_weapon]
+		set_preview_weapon(w)
+		controls.inv_is3d = true
+		var ws := ["Урон:  %d" % int(w["dmg"]), "Скорость:  %.1f уд/с" % (1.0 / float(w["cd"])), "Досягаемость:  %.1f м" % float(w["reach"])]
+		if w.get("ranged", false):
+			ws.append("• дальний бой")
+		controls.inv_weapon_name = String(w["name"])
+		controls.inv_weapon_stats = ws
+	else:
+		_clear_preview()
+		controls.inv_is3d = false
+		controls.inv_weapon_name = "Кулаки"
+		controls.inv_weapon_stats = ["Урон:  %d" % int(player.atk_dmg)]
+	# stat-upgrade levels for display
+	controls.inv_upgrades = "Сила ур.%d   •   Здоровье ур.%d" % [player.str_level, player.vit_level]
 
 func _unequip_slot(slot: int) -> void:
 	match slot:
@@ -1452,18 +1664,55 @@ func _equip_bag(it) -> void:
 		"armor": player.equip_armor(int(it["v"]))
 
 func _open_shop() -> void:
+	_build_shop()
+	shop_sel = 0
+	controls.shop_scroll = 0
 	_refresh_shop_state()
+	_select_shop(0)
 	state = "shop"
 	controls.state = 4
 
 func _refresh_shop_state() -> void:
-	var names := []
-	var owned := []
+	var rows := []
 	for it in shop:
-		names.append("%s — %d з." % [it["name"], it["price"]])
-		owned.append(_shop_owned(it))
-	controls.shop_names = names
-	controls.shop_owned = owned
+		var st := "buy"
+		if _shop_owned(it):
+			st = "owned"
+		elif player.gold < _shop_price(it):
+			st = "poor"
+		rows.append({"name": _shop_name(it), "price": _shop_price(it), "state": st})
+	controls.shop_rows = rows
+
+func _select_shop(i: int) -> void:
+	if i < 0 or i >= shop.size():
+		return
+	shop_sel = i
+	var item = shop[i]
+	controls.shop_sel = i
+	var icon := _shop_icon(item)
+	if icon == "":
+		controls.shop_is3d = true
+		if item["kind"] == "weapon":
+			set_preview_weapon(player.WEAPONS[int(item["v"])])
+		else:
+			set_preview_weapon({"model": player.SHIELDS[int(item["v"])]["model"]})
+	else:
+		controls.shop_is3d = false
+		controls.shop_icon = icon
+		_clear_preview()
+	controls.shop_sel_name = _shop_name(item)
+	controls.shop_sel_price = _shop_price(item)
+	controls.shop_stats = _shop_stats(item)
+	controls.shop_rare = item["kind"] == "weapon" and player.WEAPONS[int(item["v"])].has("tint")
+	if _shop_owned(item):
+		controls.shop_buy_text = "Максимум" if item["kind"].begins_with("booster") else "Уже куплено"
+		controls.shop_buy_state = "owned"
+	elif player.gold < _shop_price(item):
+		controls.shop_buy_text = "Не хватает золота"
+		controls.shop_buy_state = "poor"
+	else:
+		controls.shop_buy_text = "Купить за %d з." % _shop_price(item)
+		controls.shop_buy_state = "ok"
 
 func on_pickup() -> void:
 	pickups_collected += 1

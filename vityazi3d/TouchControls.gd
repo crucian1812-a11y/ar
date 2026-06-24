@@ -13,7 +13,6 @@ var restart := false
 var quality_label := "Графика: Высокая"
 var _quality := false
 var _interact := false
-var _buy := -1
 var _close := false
 
 # HUD state (set by Main)
@@ -22,14 +21,35 @@ var kills := 0
 var gold := 0
 var can_interact := false
 var region := ""
-var shop_names: Array = []
 var toast := ""
 var toast_t := 0.0
+
+# shared 3D item preview (rendered by Main's SubViewport)
+var preview_tex: Texture2D = null
+
+# shop (list + preview + stats)
+var shop_rows: Array = []      # [{name, price, state}]  state: buy/owned/poor
+var shop_sel := 0
+var shop_scroll := 0
+var shop_is3d := false
+var shop_icon := "heal"
+var shop_stats: Array = []
+var shop_sel_name := ""
+var shop_sel_price := 0
+var shop_buy_text := "Купить"
+var shop_buy_state := "ok"
+var shop_rare := false
+var _shop_select := -1
+var _shop_buy := false
+
 # inventory (paper-doll + bag, Diablo-style)
 var inv_slots: Array = []   # [{label,name,rare}] order: 0 weapon, 1 shield, 2 helmet, 3 armor
 var inv_bag: Array = []      # [{name,rare,tag}]
 var inv_stats := ""
-var shop_owned: Array = []
+var inv_is3d := false
+var inv_weapon_name := ""
+var inv_weapon_stats: Array = []
+var inv_upgrades := ""
 var _inventory := false
 var _slot := -1
 var _bag := -1
@@ -82,8 +102,10 @@ func consume_restart() -> bool:
 	var r := restart; restart = false; return r
 func consume_interact() -> bool:
 	var i := _interact; _interact = false; return i
-func consume_buy() -> int:
-	var b := _buy; _buy = -1; return b
+func consume_shop_select() -> int:
+	var s := _shop_select; _shop_select = -1; return s
+func consume_shop_buy() -> bool:
+	var b := _shop_buy; _shop_buy = false; return b
 func consume_close() -> bool:
 	var c := _close; _close = false; return c
 func consume_inventory() -> bool:
@@ -153,14 +175,31 @@ func _quality_btn() -> Rect2:
 
 func _shop_panel() -> Rect2:
 	var v := _vp()
-	var w := minf(660.0, v.x - 60.0)
-	var h := minf(600.0, v.y - 40.0)
+	var w := minf(800.0, v.x - 36.0)
+	var h := minf(580.0, v.y - 28.0)
 	return Rect2((v.x - w) * 0.5, (v.y - h) * 0.5, w, h)
 
-func _shop_row(i: int) -> Rect2:
+const SHOP_ROW_H := 34.0
+func _shop_list_rect() -> Rect2:
 	var p := _shop_panel()
-	var rh := 40.0
-	return Rect2(p.position.x + 20.0, p.position.y + 72.0 + i * (rh + 6.0), p.size.x - 40.0, rh)
+	return Rect2(p.position.x + 18.0, p.position.y + 64.0, p.size.x * 0.46, p.size.y - 132.0)
+func _shop_visible_rows() -> int:
+	return int(_shop_list_rect().size.y / SHOP_ROW_H)
+func _shop_row_rect(k: int) -> Rect2:
+	var l := _shop_list_rect()
+	return Rect2(l.position.x, l.position.y + k * SHOP_ROW_H, l.size.x, SHOP_ROW_H - 4.0)
+func _shop_scroll_up() -> Rect2:
+	var l := _shop_list_rect()
+	return Rect2(l.position.x, l.position.y + l.size.y + 8.0, l.size.x * 0.5 - 4.0, 38.0)
+func _shop_scroll_down() -> Rect2:
+	var l := _shop_list_rect()
+	return Rect2(l.position.x + l.size.x * 0.5 + 4.0, l.position.y + l.size.y + 8.0, l.size.x * 0.5 - 4.0, 38.0)
+func _shop_preview_rect() -> Rect2:
+	var p := _shop_panel()
+	return Rect2(p.position.x + p.size.x * 0.50, p.position.y + 64.0, p.size.x * 0.5 - 18.0, p.size.y * 0.46)
+func _shop_buy_rect() -> Rect2:
+	var p := _shop_panel()
+	return Rect2(p.position.x + p.size.x * 0.50, p.position.y + p.size.y - 70.0, p.size.x * 0.5 - 18.0, 52.0)
 
 func _shop_close() -> Rect2:
 	var p := _shop_panel()
@@ -241,9 +280,22 @@ func _shop_tap(p: Vector2) -> void:
 	if _shop_close().has_point(p):
 		_close = true
 		return
-	for i in range(shop_names.size()):
-		if _shop_row(i).has_point(p):
-			_buy = i
+	if _shop_buy_rect().has_point(p):
+		_shop_buy = true
+		return
+	var vis := _shop_visible_rows()
+	if _shop_scroll_up().has_point(p):
+		shop_scroll = maxi(0, shop_scroll - vis)
+		return
+	if _shop_scroll_down().has_point(p):
+		shop_scroll = mini(maxi(0, shop_rows.size() - vis), shop_scroll + vis)
+		return
+	for k in range(vis):
+		var idx := shop_scroll + k
+		if idx >= shop_rows.size():
+			break
+		if _shop_row_rect(k).has_point(p):
+			_shop_select = idx
 			return
 
 func _play_input(event: InputEvent) -> void:
@@ -358,27 +410,90 @@ func _draw_play() -> void:
 func _draw_shop() -> void:
 	var v := _vp()
 	var font := ThemeDB.fallback_font
-	draw_rect(Rect2(0, 0, v.x, v.y), Color(0, 0, 0, 0.55))
+	draw_rect(Rect2(0, 0, v.x, v.y), Color(0, 0, 0, 0.6))
 	var p := _shop_panel()
-	draw_rect(p, Color(0.12, 0.11, 0.10, 0.97))
+	draw_rect(p, Color(0.12, 0.11, 0.10, 0.98))
 	draw_rect(p, Color(0.85, 0.7, 0.3, 0.9), false, 3.0)
 	if font:
-		draw_string(font, Vector2(p.position.x + 20, p.position.y + 42), "ЛАВКА ТОРГОВЦА", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(0.95, 0.85, 0.4))
-		draw_string(font, Vector2(p.position.x + p.size.x - 70, p.position.y + 42), "Золото: %d" % gold, HORIZONTAL_ALIGNMENT_RIGHT, -1, 20, Color.WHITE)
-	# close
+		draw_string(font, Vector2(p.position.x + 20, p.position.y + 42), "ЛАВКА ТОРГОВЦА", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(0.95, 0.85, 0.4))
+		draw_string(font, Vector2(p.position.x + p.size.x * 0.5 - 70, p.position.y + 42), "Золото: %d" % gold, HORIZONTAL_ALIGNMENT_RIGHT, -1, 20, Color(0.95, 0.85, 0.4))
 	var cl := _shop_close()
 	draw_rect(cl, Color(0.4, 0.15, 0.13))
 	if font:
 		draw_string(font, cl.position + Vector2(14, 31), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
-	for i in range(shop_names.size()):
-		var r := _shop_row(i)
-		var owned: bool = i < shop_owned.size() and shop_owned[i]
-		draw_rect(r, Color(0.18, 0.22, 0.18) if owned else Color(0.2, 0.19, 0.17))
-		draw_rect(r, Color(0.5, 0.45, 0.35), false, 1.5)
+
+	# ---- item list (left) ----
+	var vis := _shop_visible_rows()
+	for k in range(vis):
+		var idx := shop_scroll + k
+		if idx >= shop_rows.size():
+			break
+		var row: Dictionary = shop_rows[idx]
+		var r := _shop_row_rect(k)
+		var st := String(row.get("state", "buy"))
+		var selrow := idx == shop_sel
+		draw_rect(r, Color(0.26, 0.24, 0.16) if selrow else Color(0.18, 0.17, 0.15))
+		draw_rect(r, Color(0.95, 0.8, 0.35) if selrow else Color(0.4, 0.38, 0.32), false, 2.0 if selrow else 1.0)
 		if font:
-			draw_string(font, r.position + Vector2(14, 28), str(shop_names[i]), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.7, 0.7, 0.7) if owned else Color.WHITE)
-			if owned:
-				draw_string(font, Vector2(r.position.x + r.size.x - 16, r.position.y + 28), "✓", HORIZONTAL_ALIGNMENT_RIGHT, -1, 20, Color(0.5, 0.85, 0.45))
+			var nmcol := Color.WHITE
+			if st == "owned": nmcol = Color(0.55, 0.85, 0.5)
+			elif st == "poor": nmcol = Color(0.7, 0.55, 0.55)
+			draw_string(font, r.position + Vector2(10, 23), String(row.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 90, 16, nmcol)
+			var ptxt := "✓" if st == "owned" else ("%d з." % int(row.get("price", 0)))
+			var pcol := Color(0.55, 0.85, 0.5) if st == "owned" else (Color(0.95, 0.85, 0.4) if st != "poor" else Color(0.8, 0.45, 0.4))
+			draw_string(font, Vector2(r.position.x + r.size.x - 14, r.position.y + 23), ptxt, HORIZONTAL_ALIGNMENT_RIGHT, -1, 16, pcol)
+	# scroll buttons
+	var su := _shop_scroll_up()
+	var sd := _shop_scroll_down()
+	draw_rect(su, Color(0.2, 0.2, 0.24)); draw_rect(sd, Color(0.2, 0.2, 0.24))
+	draw_rect(su, Color(0.5, 0.5, 0.55), false, 1.5); draw_rect(sd, Color(0.5, 0.5, 0.55), false, 1.5)
+	if font:
+		draw_string(font, su.position + Vector2(0, 27), "▲", HORIZONTAL_ALIGNMENT_CENTER, su.size.x, 20, Color.WHITE)
+		draw_string(font, sd.position + Vector2(0, 27), "▼", HORIZONTAL_ALIGNMENT_CENTER, sd.size.x, 20, Color.WHITE)
+
+	# ---- detail panel (right) ----
+	var pr := _shop_preview_rect()
+	draw_rect(pr, Color(0.07, 0.08, 0.11))
+	draw_rect(pr, Color(0.95, 0.8, 0.35) if shop_rare else Color(0.45, 0.45, 0.5), false, 2.0)
+	if shop_is3d and preview_tex != null:
+		draw_texture_rect(preview_tex, pr, false)
+	else:
+		_draw_item_icon(pr, shop_icon)
+	if font:
+		var ncol := Color(1.0, 0.85, 0.35) if shop_rare else Color.WHITE
+		draw_string(font, Vector2(pr.position.x, pr.position.y + pr.size.y + 26), shop_sel_name, HORIZONTAL_ALIGNMENT_LEFT, pr.size.x, 20, ncol)
+		var sy := pr.position.y + pr.size.y + 52
+		for line in shop_stats:
+			draw_string(font, Vector2(pr.position.x + 4, sy), String(line), HORIZONTAL_ALIGNMENT_LEFT, pr.size.x, 16, Color(0.82, 0.84, 0.88))
+			sy += 22
+	# buy button
+	var br := _shop_buy_rect()
+	var bcol := Color(0.2, 0.42, 0.22)
+	if shop_buy_state == "owned": bcol = Color(0.22, 0.28, 0.22)
+	elif shop_buy_state == "poor": bcol = Color(0.36, 0.2, 0.18)
+	draw_rect(br, bcol)
+	draw_rect(br, Color(0.6, 0.85, 0.5) if shop_buy_state == "ok" else Color(0.5, 0.45, 0.4), false, 2.5)
+	if font:
+		draw_string(font, Vector2(br.position.x, br.position.y + 34), shop_buy_text, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, 22, Color.WHITE)
+
+func _draw_item_icon(r: Rect2, icon: String) -> void:
+	var c := r.position + r.size * 0.5
+	var s := minf(r.size.x, r.size.y) * 0.28
+	match icon:
+		"heal":
+			draw_rect(Rect2(c.x - s * 0.35, c.y - s, s * 0.7, s * 1.8), Color(0.8, 0.2, 0.25))
+			draw_rect(Rect2(c.x - s * 0.18, c.y - s * 1.25, s * 0.36, s * 0.3), Color(0.6, 0.45, 0.3))
+		"str":
+			draw_circle(c, s * 0.5, Color(0.85, 0.4, 0.25))
+			draw_rect(Rect2(c.x - s, c.y - s * 0.18, s * 2.0, s * 0.36), Color(0.7, 0.7, 0.75))
+		"vit":
+			var pts := PackedVector2Array([c + Vector2(0, s), c + Vector2(-s, 0), c + Vector2(-s * 0.5, -s), c + Vector2(0, -s * 0.4), c + Vector2(s * 0.5, -s), c + Vector2(s, 0)])
+			draw_colored_polygon(pts, Color(0.85, 0.25, 0.3))
+		"helmet":
+			draw_circle(c + Vector2(0, s * 0.1), s * 0.7, Color(0.6, 0.62, 0.7))
+			draw_rect(Rect2(c.x - s * 0.7, c.y + s * 0.1, s * 1.4, s * 0.4), Color(0.5, 0.52, 0.6))
+		"armor":
+			draw_colored_polygon(PackedVector2Array([c + Vector2(-s, -s), c + Vector2(s, -s), c + Vector2(s * 0.7, s), c + Vector2(0, s * 1.2), c + Vector2(-s * 0.7, s)]), Color(0.5, 0.6, 0.78))
 
 func _draw_inv() -> void:
 	var v := _vp()
@@ -395,16 +510,20 @@ func _draw_inv() -> void:
 	if font:
 		draw_string(font, cl.position + Vector2(14, 31), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
 
-	# ---- paper-doll silhouette ----
+	if font and inv_upgrades != "":
+		draw_string(font, Vector2(p.position.x + 20, p.position.y + 94), inv_upgrades, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.85, 0.78, 0.5))
+
+	# ---- central equipped-weapon preview, framed by the slots ----
 	var sx := _inv_doll_x()
-	var top := p.position.y + 96.0
-	var bodycol := Color(0.22, 0.24, 0.30, 0.9)
-	draw_circle(Vector2(sx, top + 96), 22.0, bodycol)             # head
-	draw_rect(Rect2(sx - 26, top + 118, 52, 96), bodycol)        # torso
-	draw_rect(Rect2(sx - 44, top + 120, 18, 72), bodycol)        # left arm
-	draw_rect(Rect2(sx + 26, top + 120, 18, 72), bodycol)        # right arm
-	draw_rect(Rect2(sx - 22, top + 214, 18, 64), bodycol)        # left leg
-	draw_rect(Rect2(sx + 4, top + 214, 18, 64), bodycol)         # right leg
+	var top := p.position.y + 110.0
+	var ipr := Rect2(sx - 66, top + 64, 132, 150)
+	draw_rect(ipr, Color(0.07, 0.08, 0.11))
+	var pwrare: bool = inv_slots.size() > 0 and bool(inv_slots[0].get("rare", false))
+	draw_rect(ipr, Color(0.95, 0.8, 0.35) if pwrare else Color(0.4, 0.4, 0.46), false, 2.0)
+	if inv_is3d and preview_tex != null:
+		draw_texture_rect(preview_tex, ipr, false)
+	elif font:
+		draw_string(font, ipr.position + Vector2(0, ipr.size.y * 0.5), "Кулаки", HORIZONTAL_ALIGNMENT_CENTER, ipr.size.x, 16, Color(0.6, 0.6, 0.65))
 
 	# ---- equipment slots ----
 	for i in range(4):
@@ -420,8 +539,15 @@ func _draw_inv() -> void:
 			draw_string(font, r.position + Vector2(8, 18), String(sd.get("label", "")), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 12, 13, Color(0.68, 0.68, 0.74))
 			var ncol := Color(1.0, 0.85, 0.35) if rare else (Color.WHITE if filled else Color(0.5, 0.5, 0.55))
 			draw_string(font, r.position + Vector2(8, 44), nm, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 12, 15, ncol)
+	# weapon name + stats below the doll (clear of the bottom armour slot)
 	if font:
-		draw_string(font, Vector2(sx - 96, top + 320), "Слот → снять", HORIZONTAL_ALIGNMENT_CENTER, 192, 14, Color(0.66, 0.66, 0.7))
+		var wn := Color(1.0, 0.85, 0.35) if pwrare else Color.WHITE
+		draw_string(font, Vector2(p.position.x + 20, p.position.y + 398), inv_weapon_name, HORIZONTAL_ALIGNMENT_LEFT, p.size.x * 0.46, 18, wn)
+		var yy := p.position.y + 424.0
+		for line in inv_weapon_stats:
+			draw_string(font, Vector2(p.position.x + 24, yy), String(line), HORIZONTAL_ALIGNMENT_LEFT, p.size.x * 0.46, 15, Color(0.82, 0.84, 0.88))
+			yy += 21.0
+		draw_string(font, Vector2(p.position.x + 20, yy + 6), "Слот → снять  •  мешок → надеть", HORIZONTAL_ALIGNMENT_LEFT, p.size.x * 0.46, 13, Color(0.6, 0.6, 0.66))
 
 	# ---- bag ----
 	var bx := p.position.x + p.size.x * 0.52

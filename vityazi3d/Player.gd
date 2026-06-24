@@ -13,28 +13,50 @@ const MODEL_SCALE := 0.82
 
 var char_id := 0
 
-# weapon/equipment databases
+# weapon/equipment databases. cls = display class, price = shop cost (rare/omit = not sold)
 var WEAPONS := [
-	{"name": "Меч", "model": "res://assets/weapons/sword_1handed.gltf", "anim": "1H_Melee_Attack_Slice_Diagonal", "dmg": 42.0, "reach": 2.7, "cd": 0.55, "two": false},
-	{"name": "Двуручный меч", "model": "res://assets/weapons/sword_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 76.0, "reach": 3.0, "cd": 0.82, "two": true},
-	{"name": "Боевой топор", "model": "res://assets/weapons/axe_1handed.gltf", "anim": "1H_Melee_Attack_Chop", "dmg": 52.0, "reach": 2.6, "cd": 0.6, "two": false},
-	{"name": "Секира", "model": "res://assets/weapons/axe_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 88.0, "reach": 2.9, "cd": 0.9, "two": true},
-	{"name": "Кинжал", "model": "res://assets/weapons/dagger.gltf", "anim": "1H_Melee_Attack_Stab", "dmg": 34.0, "reach": 2.3, "cd": 0.38, "two": false},
-	{"name": "Копьё", "model": "res://assets/weapons/staff.gltf", "anim": "2H_Melee_Attack_Stab", "dmg": 60.0, "reach": 3.5, "cd": 0.6, "two": true},
-	{"name": "Арбалет", "model": "res://assets/weapons/crossbow_2handed.gltf", "anim": "2H_Ranged_Shoot", "dmg": 44.0, "reach": 22.0, "cd": 1.0, "two": true, "ranged": true},
-	# --- unique rewards (quests only) ---
-	{"name": "Меч-кладенец", "model": "res://assets/weapons/sword_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 120.0, "reach": 3.3, "cd": 0.7, "two": true, "rare": true, "tint": Color(1.0, 0.84, 0.30)},
-	{"name": "Секира Перуна", "model": "res://assets/weapons/axe_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 140.0, "reach": 3.0, "cd": 0.85, "two": true, "rare": true, "tint": Color(0.65, 0.85, 1.0)},
-	{"name": "Лук Соловья", "model": "res://assets/weapons/crossbow_2handed.gltf", "anim": "2H_Ranged_Shoot", "dmg": 82.0, "reach": 26.0, "cd": 0.8, "two": true, "ranged": true, "rare": true, "tint": Color(0.55, 1.0, 0.55)},
+	{"name": "Меч", "cls": "Меч", "model": "res://assets/weapons/sword_1handed.gltf", "anim": "1H_Melee_Attack_Slice_Diagonal", "dmg": 42.0, "reach": 2.7, "cd": 0.55, "two": false, "price": 60},
+	{"name": "Двуручный меч", "cls": "Двуручник", "model": "res://assets/weapons/sword_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 76.0, "reach": 3.0, "cd": 0.82, "two": true, "price": 150},
+	{"name": "Боевой топор", "cls": "Топор", "model": "res://assets/weapons/axe_1handed.gltf", "anim": "1H_Melee_Attack_Chop", "dmg": 52.0, "reach": 2.6, "cd": 0.6, "two": false, "price": 70},
+	{"name": "Секира", "cls": "Секира", "model": "res://assets/weapons/axe_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 88.0, "reach": 2.9, "cd": 0.9, "two": true, "price": 175},
+	{"name": "Кинжал", "cls": "Кинжал", "model": "res://assets/weapons/dagger.gltf", "anim": "1H_Melee_Attack_Stab", "dmg": 34.0, "reach": 2.3, "cd": 0.38, "two": false, "price": 55},
+	{"name": "Копьё", "cls": "Копьё", "model": "res://assets/weapons/staff.gltf", "anim": "2H_Melee_Attack_Stab", "dmg": 60.0, "reach": 3.5, "cd": 0.6, "two": true, "price": 120},
+	{"name": "Арбалет", "cls": "Стрелковое", "model": "res://assets/weapons/crossbow_2handed.gltf", "anim": "2H_Ranged_Shoot", "dmg": 44.0, "reach": 22.0, "cd": 1.0, "two": true, "ranged": true, "price": 170},
+	# --- unique rewards (quests only, not sold) ---
+	{"name": "Меч-кладенец", "cls": "Двуручник", "model": "res://assets/weapons/sword_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 120.0, "reach": 3.3, "cd": 0.7, "two": true, "rare": true, "tint": Color(1.0, 0.84, 0.30)},
+	{"name": "Секира Перуна", "cls": "Секира", "model": "res://assets/weapons/axe_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 140.0, "reach": 3.0, "cd": 0.85, "two": true, "rare": true, "tint": Color(0.65, 0.85, 1.0)},
+	{"name": "Лук Соловья", "cls": "Стрелковое", "model": "res://assets/weapons/crossbow_2handed.gltf", "anim": "2H_Ranged_Shoot", "dmg": 82.0, "reach": 26.0, "cd": 0.8, "two": true, "ranged": true, "rare": true, "tint": Color(0.55, 1.0, 0.55)},
+	# --- extra purchasable arsenal ---
+	{"name": "Ржавый меч", "cls": "Меч", "model": "res://assets/weapons/sword_1handed.gltf", "anim": "1H_Melee_Attack_Slice_Diagonal", "dmg": 28.0, "reach": 2.6, "cd": 0.55, "two": false, "price": 25, "tint": Color(0.45, 0.38, 0.30)},
+	{"name": "Стальной меч", "cls": "Меч", "model": "res://assets/weapons/sword_1handed.gltf", "anim": "1H_Melee_Attack_Slice_Diagonal", "dmg": 56.0, "reach": 2.8, "cd": 0.52, "two": false, "price": 130, "tint": Color(0.7, 0.78, 0.9)},
+	{"name": "Княжеский меч", "cls": "Меч", "model": "res://assets/weapons/sword_1handed.gltf", "anim": "1H_Melee_Attack_Slice_Diagonal", "dmg": 74.0, "reach": 2.9, "cd": 0.5, "two": false, "price": 260, "tint": Color(0.95, 0.85, 0.5)},
+	{"name": "Засапожный нож", "cls": "Кинжал", "model": "res://assets/weapons/dagger.gltf", "anim": "1H_Melee_Attack_Stab", "dmg": 46.0, "reach": 2.3, "cd": 0.33, "two": false, "price": 95, "tint": Color(0.6, 0.65, 0.7)},
+	{"name": "Топор дровосека", "cls": "Топор", "model": "res://assets/weapons/axe_1handed.gltf", "anim": "1H_Melee_Attack_Chop", "dmg": 34.0, "reach": 2.5, "cd": 0.62, "two": false, "price": 30, "tint": Color(0.5, 0.42, 0.32)},
+	{"name": "Чекан", "cls": "Топор", "model": "res://assets/weapons/axe_1handed.gltf", "anim": "1H_Melee_Attack_Chop", "dmg": 66.0, "reach": 2.6, "cd": 0.58, "two": false, "price": 150, "tint": Color(0.72, 0.76, 0.82)},
+	{"name": "Бердыш", "cls": "Секира", "model": "res://assets/weapons/axe_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 104.0, "reach": 3.1, "cd": 0.92, "two": true, "price": 300, "tint": Color(0.62, 0.66, 0.72)},
+	{"name": "Рогатина", "cls": "Копьё", "model": "res://assets/weapons/staff.gltf", "anim": "2H_Melee_Attack_Stab", "dmg": 50.0, "reach": 3.4, "cd": 0.62, "two": true, "price": 90, "tint": Color(0.5, 0.4, 0.3)},
+	{"name": "Совня", "cls": "Копьё", "model": "res://assets/weapons/staff.gltf", "anim": "2H_Melee_Attack_Stab", "dmg": 78.0, "reach": 3.6, "cd": 0.6, "two": true, "price": 230, "tint": Color(0.75, 0.78, 0.85)},
+	{"name": "Самострел", "cls": "Стрелковое", "model": "res://assets/weapons/crossbow_2handed.gltf", "anim": "2H_Ranged_Shoot", "dmg": 30.0, "reach": 18.0, "cd": 1.1, "two": true, "ranged": true, "price": 60, "tint": Color(0.5, 0.42, 0.32)},
+	{"name": "Тяжёлый арбалет", "cls": "Стрелковое", "model": "res://assets/weapons/crossbow_2handed.gltf", "anim": "2H_Ranged_Shoot", "dmg": 64.0, "reach": 24.0, "cd": 1.15, "two": true, "ranged": true, "price": 240, "tint": Color(0.7, 0.74, 0.8)},
+	{"name": "Булава", "cls": "Булава", "model": "proc:mace", "anim": "1H_Melee_Attack_Chop", "dmg": 64.0, "reach": 2.5, "cd": 0.66, "two": false, "price": 140, "tint": Color(0.7, 0.72, 0.76)},
+	{"name": "Шестопёр", "cls": "Булава", "model": "proc:mace", "anim": "1H_Melee_Attack_Chop", "dmg": 86.0, "reach": 2.6, "cd": 0.64, "two": false, "price": 280, "tint": Color(0.85, 0.78, 0.5)},
 ]
-const UNARMED := {"name": "Кулаки", "dmg": 14.0, "reach": 2.0, "cd": 0.5, "anim": "1H_Melee_Attack_Slice_Diagonal"}
+const UNARMED := {"name": "Кулаки", "cls": "Без оружия", "dmg": 14.0, "reach": 2.0, "cd": 0.5, "anim": "1H_Melee_Attack_Slice_Diagonal"}
 var SHIELDS := [
-	{"name": "Без щита", "model": "", "armor": 0.0},
-	{"name": "Круглый щит", "model": "res://assets/weapons/shield_round.gltf", "armor": 0.10},
-	{"name": "Большой щит", "model": "res://assets/weapons/shield_square.gltf", "armor": 0.18},
+	{"name": "Без щита", "model": "", "armor": 0.0, "price": 0},
+	{"name": "Круглый щит", "model": "res://assets/weapons/shield_round.gltf", "armor": 0.10, "price": 55},
+	{"name": "Большой щит", "model": "res://assets/weapons/shield_square.gltf", "armor": 0.18, "price": 130},
 ]
 var ARMOR_TIERS := [0.0, 0.12, 0.22]
 var ARMOR_NAMES := ["нет", "кольчуга", "латы"]
+
+# stat upgrades (levelled)
+var str_level := 0
+var vit_level := 0
+const STR_STEP := 6.0
+const VIT_STEP := 25.0
+const STR_MAX := 15
+const VIT_MAX := 15
 
 # ownership / equipped
 var gold := 60
@@ -146,6 +168,10 @@ func set_character(id: int) -> void:
 	# reset RPG state
 	gold = 60
 	dmg_bonus = 0.0
+	max_hp = 100.0
+	hp = 100.0
+	str_level = 0
+	vit_level = 0
 	owned_shields = [0]
 	equipped_shield = 0
 	helmet_owned = false
@@ -220,13 +246,23 @@ func equip_weapon(i: int) -> void:
 	if weapon_holder:
 		for c in weapon_holder.get_children():
 			c.queue_free()
-		if w["model"] != "":
-			var inst = load(w["model"]).instantiate()
-			weapon_holder.add_child(inst)
-			if w.get("rare", false):
-				_tint(inst, w.get("tint", Color(1.0, 0.85, 0.3)))
+		if w["model"] != "" and main and main.has_method("make_weapon_visual"):
+			weapon_holder.add_child(main.make_weapon_visual(w))
 	_refresh_shield()
 	_recalc_armor()
+
+# stat upgrades
+func can_buy_strength() -> bool: return str_level < STR_MAX
+func can_buy_vitality() -> bool: return vit_level < VIT_MAX
+func buy_strength() -> void:
+	if str_level >= STR_MAX: return
+	str_level += 1
+	dmg_bonus += STR_STEP
+func buy_vitality() -> void:
+	if vit_level >= VIT_MAX: return
+	vit_level += 1
+	max_hp += VIT_STEP
+	hp = max_hp
 
 func unequip_weapon() -> void:
 	equip_weapon(-1)
