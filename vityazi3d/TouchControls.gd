@@ -62,6 +62,9 @@ var inv_is3d := false
 var inv_weapon_name := ""
 var inv_weapon_stats: Array = []
 var inv_upgrades := ""
+var net_active := false
+var inv_give := false
+var _give_gold := false
 var _inventory := false
 var _slot := -1
 var _bag := -1
@@ -154,6 +157,8 @@ func consume_slot() -> int:
 	var s := _slot; _slot = -1; return s
 func consume_bag() -> int:
 	var b := _bag; _bag = -1; return b
+func consume_give_gold() -> bool:
+	var g := _give_gold; _give_gold = false; return g
 func consume_dodge() -> bool:
 	var d := _dodge; _dodge = false; return d
 func consume_quest() -> bool:
@@ -189,6 +194,13 @@ func _bag_cell(i: int) -> Rect2:
 	var r := i / cols
 	var c := i % cols
 	return Rect2(bx + c * (cw + gap), by + r * (ch + gap), cw, ch)
+
+func _inv_give_btn() -> Rect2:
+	var p := _shop_panel()
+	return Rect2(p.position.x + 20.0, p.position.y + p.size.y - 56.0, p.size.x * 0.46 - 30.0, 44.0)
+func _inv_gold_btn() -> Rect2:
+	var p := _shop_panel()
+	return Rect2(p.position.x + p.size.x * 0.52, p.position.y + p.size.y - 56.0, p.size.x * 0.46 - 30.0, 44.0)
 
 # ---- geometry ----
 func _attack_center() -> Vector2:
@@ -299,6 +311,12 @@ func _quest_tap(p: Vector2) -> void:
 func _inv_tap(p: Vector2) -> void:
 	if _shop_close().has_point(p):
 		_close = true
+		return
+	if net_active and _inv_give_btn().has_point(p):
+		inv_give = not inv_give
+		return
+	if net_active and _inv_gold_btn().has_point(p):
+		_give_gold = true
 		return
 	for i in range(4):
 		if _slot_rect(i).has_point(p):
@@ -639,7 +657,8 @@ func _draw_inv() -> void:
 	# ---- bag ----
 	var bx := p.position.x + p.size.x * 0.52
 	if font:
-		draw_string(font, Vector2(bx, p.position.y + 128), "МЕШОК — нажми, чтобы надеть", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(0.85, 0.78, 0.5))
+		var baghint := "МЕШОК — нажми, чтобы ОТДАТЬ" if (net_active and inv_give) else "МЕШОК — нажми, чтобы надеть"
+		draw_string(font, Vector2(bx, p.position.y + 128), baghint, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(0.95, 0.7, 0.4) if (net_active and inv_give) else Color(0.85, 0.78, 0.5))
 	for i in range(12):
 		var rc := _bag_cell(i)
 		if rc.position.y + rc.size.y > p.position.y + p.size.y - 12:
@@ -653,6 +672,18 @@ func _draw_inv() -> void:
 			draw_string(font, rc.position + Vector2(6, 16), String(it.get("tag", "")), HORIZONTAL_ALIGNMENT_LEFT, rc.size.x - 8, 11, Color(0.6, 0.6, 0.66))
 			var ncol2 := Color(1.0, 0.85, 0.35) if rare2 else Color.WHITE
 			draw_string(font, rc.position + Vector2(6, 40), String(it.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, rc.size.x - 8, 13, ncol2)
+
+	# ---- sharing buttons (multiplayer only) ----
+	if net_active:
+		var gb := _inv_give_btn()
+		draw_rect(gb, Color(0.30, 0.22, 0.10) if inv_give else Color(0.15, 0.16, 0.19))
+		draw_rect(gb, Color(0.95, 0.7, 0.35) if inv_give else Color(0.5, 0.5, 0.55), false, 2.0)
+		var gld := _inv_gold_btn()
+		draw_rect(gld, Color(0.15, 0.16, 0.19))
+		draw_rect(gld, Color(0.95, 0.85, 0.4, 0.9), false, 2.0)
+		if font:
+			draw_string(font, Vector2(gb.position.x, gb.position.y + 29), "Отдавать: " + ("ВКЛ" if inv_give else "выкл"), HORIZONTAL_ALIGNMENT_CENTER, gb.size.x, 19, Color.WHITE)
+			draw_string(font, Vector2(gld.position.x, gld.position.y + 29), "Отдать 50 з. союзнику", HORIZONTAL_ALIGNMENT_CENTER, gld.size.x, 18, Color(0.95, 0.88, 0.5))
 
 func _draw_quest() -> void:
 	var v := _vp()

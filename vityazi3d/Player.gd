@@ -419,17 +419,24 @@ func _update_anim(moving: bool) -> void:
 		cur_anim = want
 		anim.play(want, 0.15)
 
+func _self_id() -> int:
+	return Net.my_id() if (Net and Net.active) else 1
+
 func _do_attack() -> void:
 	var f := Vector3(sin(model.rotation.y), 0, cos(model.rotation.y)) if model else -global_transform.basis.z
 	if ranged:
+		# only fire at enemies that are aware of and coming at the player
 		var tgt = _nearest_enemy()
+		if tgt == null:
+			if main and main.has_method("show_toast"):
+				main.show_toast("Стрелять можно лишь по врагу, что заметил вас")
+			return
 		var start := global_position + Vector3.UP * 1.3 + f * 0.6
-		var aim := f
-		if tgt:
-			aim = (tgt.global_position + Vector3.UP * 1.0 - start).normalized()
+		var aim: Vector3 = (tgt.global_position + Vector3.UP * 1.0 - start).normalized()
 		var pr := GameProjectile.new()
 		pr.hit_group = "enemy"
 		pr.dmg = atk_dmg + dmg_bonus
+		pr.owner_id = _self_id()
 		get_parent().add_child(pr)
 		pr.global_position = start
 		pr.vel = aim * 30.0
@@ -437,19 +444,40 @@ func _do_attack() -> void:
 	for e in get_tree().get_nodes_in_group("enemy"):
 		var to = e.global_position - global_position
 		if to.length() < atk_reach and f.dot(to.normalized()) > 0.1:
-			e.take_damage(atk_dmg + dmg_bonus)
+			e.take_damage(atk_dmg + dmg_bonus, _self_id())
 			Sfx.hit()
 			if main and main.has_method("spawn_hit_sparks"):
 				main.spawn_hit_sparks(e.global_position + Vector3.UP * 1.2)
 
+# nearest enemy that is actually aware of / chasing the player (gates ranged spam)
 func _nearest_enemy():
 	var best = null
 	var bd := 1e9
 	for e in get_tree().get_nodes_in_group("enemy"):
+		if not e.aggroed:
+			continue
 		var d: float = e.global_position.distance_to(global_position)
 		if d < bd:
 			bd = d; best = e
 	return best
+
+# ---- giving items to allies ----
+func remove_weapon(i: int) -> void:
+	owned_weapons.erase(i)
+	if equipped_weapon == i:
+		equip_weapon(owned_weapons[0] if owned_weapons.size() > 0 else -1)
+func remove_shield(i: int) -> void:
+	owned_shields.erase(i)
+	if equipped_shield == i:
+		equip_shield(0)
+func remove_armor(i: int) -> void:
+	owned_armors.erase(i)
+	if equipped_armor == i:
+		unequip_armor()
+func remove_helmet() -> void:
+	helmet_owned = false
+	helmet_on = false
+	_recalc_armor()
 
 func take_damage(d: float) -> void:
 	if hurt_t > 0.0:

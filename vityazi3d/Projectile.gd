@@ -5,6 +5,7 @@ var vel := Vector3.ZERO
 var dmg := 7.0
 var life := 4.0
 var hit_group := "player"   # whom this projectile damages
+var owner_id := 1           # net id of whoever fired it (for kill credit)
 
 func _ready() -> void:
 	add_to_group("proj")
@@ -25,7 +26,10 @@ func _process(delta: float) -> void:
 	for t in get_tree().get_nodes_in_group(hit_group):
 		if global_position.distance_to(t.global_position + Vector3.UP * 1.0) < 1.3:
 			if t.has_method("take_damage"):
-				t.take_damage(dmg)
+				if hit_group == "enemy":
+					t.take_damage(dmg, owner_id)
+				else:
+					t.take_damage(dmg)
 			queue_free()
 			return
 	if life <= 0.0 or global_position.y < -2.0:

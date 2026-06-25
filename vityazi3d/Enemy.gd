@@ -1,7 +1,7 @@
 extends CharacterBody3D
 class_name GameEnemy
 
-enum Kind { RAIDER, SPEARMAN, ARCHER, BRUTE, BOSS, MONGOL, MONGOL_ARCHER, MONGOL_HEAVY, KHAN }
+enum Kind { RAIDER, SPEARMAN, ARCHER, BRUTE, BOSS, MONGOL, MONGOL_ARCHER, MONGOL_HEAVY, KHAN, MARAUDER, VETERAN, CHAMPION }
 
 var kind: int = Kind.RAIDER
 var main
@@ -24,6 +24,8 @@ var net_target := Vector3.ZERO
 var net_yaw := 0.0
 var net_hpfrac := 1.0
 var net_moving := false
+var aggroed := false            # actively aware of / chasing a player
+var last_attacker := 1          # net id of whoever last hit it (kill credit)
 
 const AGGRO := 22.0
 const GRAVITY := 22.0
@@ -102,6 +104,18 @@ func _apply_kind() -> void:
 		Kind.KHAN:
 			hp = 2400; speed = 3.3; dmg = 50; reach = 3.5; atk_cd_time = 1.15; mscale = 2.4
 			path = "res://assets/models/Knight.glb"; show = ["2H_Sword", "Knight_Helmet", "Knight_Cape"]
+			attack_anim = "2H_Melee_Attack_Chop"
+		Kind.MARAUDER:
+			hp = 42; speed = 5.0; dmg = 9; reach = 2.2; atk_cd_time = 0.65; mscale = 0.72
+			path = "res://assets/models/Barbarian.glb"; show = ["1H_Axe", "Barbarian_Round_Shield"]
+			attack_anim = "1H_Melee_Attack_Chop"
+		Kind.VETERAN:
+			hp = 130; speed = 3.3; dmg = 15; reach = 2.5; atk_cd_time = 1.0; mscale = 0.92
+			path = "res://assets/models/Knight.glb"; show = ["1H_Sword", "Knight_Helmet"]
+			attack_anim = "1H_Melee_Attack_Slice_Diagonal"
+		Kind.CHAMPION:
+			hp = 230; speed = 3.1; dmg = 26; reach = 2.9; atk_cd_time = 1.15; mscale = 1.12
+			path = "res://assets/models/Knight.glb"; show = ["2H_Sword", "Knight_Cape", "Knight_Helmet"]
 			attack_anim = "2H_Melee_Attack_Chop"
 	_model_path = path
 	_show = show
@@ -192,7 +206,13 @@ func _physics_process(delta: float) -> void:
 		if model:
 			model.rotation.y = lerp_angle(model.rotation.y, net_yaw, f)
 		hp = net_hpfrac * max_hp
-		_update_anim(net_moving)
+		var np = _nearest_player()
+		var npd: float = np.global_position.distance_to(global_position) if np else 999.0
+		aggroed = npd <= AGGRO
+		if anim:
+			anim.active = npd < 80.0
+		if npd < 80.0:
+			_update_anim(net_moving)
 		_update_hpbar()
 		return
 
@@ -212,6 +232,19 @@ func _physics_process(delta: float) -> void:
 		to.y = 0
 		var dist := to.length()
 		var dir := to.normalized() if dist > 0.01 else Vector3.ZERO
+		aggroed = dist <= AGGRO
+
+		# performance: far enemies stop animating & idle in place
+		if dist > 80.0 and is_on_floor():
+			if anim and anim.active:
+				anim.active = false
+			velocity.x = 0.0
+			velocity.z = 0.0
+			move_and_slide()
+			_update_hpbar()
+			return
+		elif anim and not anim.active:
+			anim.active = true
 
 		if dist > AGGRO:
 			# passive: stay near the camp until the player comes close
@@ -285,7 +318,7 @@ func _shoot(player) -> void:
 	var target: Vector3 = player.global_position + Vector3.UP * 1.0
 	pr.vel = (target - pr.global_position).normalized() * 18.0
 
-func take_damage(d: float) -> void:
+func take_damage(d: float, by: int = 1) -> void:
 	# client proxy: don't resolve damage locally, ask the host to apply it
 	if net_proxy:
 		hurt_t = 0.12
@@ -294,6 +327,8 @@ func take_damage(d: float) -> void:
 		return
 	hp -= d
 	hurt_t = 0.12
+	aggroed = true
+	last_attacker = by
 	var player = _nearest_player()
 	if player:
 		var away: Vector3 = (global_position - player.global_position).normalized()
@@ -305,7 +340,7 @@ func take_damage(d: float) -> void:
 				main.on_boss_killed()
 			if kind == Kind.KHAN and main.has_method("on_khan_killed"):
 				main.on_khan_killed()
-			main.on_enemy_killed(global_position, gold_drop)
+			main.on_enemy_killed(global_position, gold_drop, last_attacker)
 		queue_free()
 
 # ---------------- hp bar ----------------

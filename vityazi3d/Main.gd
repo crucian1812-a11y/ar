@@ -1382,7 +1382,7 @@ func _net_request_hit(net_id: int, d: float) -> void:
 		return
 	var e = enemy_by_netid.get(net_id)
 	if is_instance_valid(e):
-		e.take_damage(d)
+		e.take_damage(d, multiplayer.get_remote_sender_id())
 
 func host_damage_remote(peer_id: int, d: float) -> void:
 	if Net.is_host:
@@ -1393,6 +1393,71 @@ func _net_apply_damage(d: float) -> void:
 	if player:
 		player.take_damage(d)
 
+# ---- sharing with allies ----
+func _nearest_remote():
+	var best = null
+	var bd := 14.0       # must be close to trade
+	for id in remote_players.keys():
+		var rp = remote_players[id]
+		if not is_instance_valid(rp):
+			continue
+		var d: float = rp.global_position.distance_to(player.global_position)
+		if d < bd:
+			bd = d; best = rp
+	return best
+
+func give_bag_item(it) -> void:
+	if not Net.active:
+		show_toast("Делиться можно только в сетевой игре")
+		return
+	var rp = _nearest_remote()
+	if rp == null:
+		show_toast("Подойдите ближе к союзнику")
+		return
+	var kind = it["kind"]
+	var v := int(it["v"])
+	match kind:
+		"w": player.remove_weapon(v)
+		"s": player.remove_shield(v)
+		"helm": player.remove_helmet()
+		"armor": player.remove_armor(v)
+	rpc_id(rp.peer_id, "_net_receive_item", kind, v)
+	Sfx.coin()
+	show_toast("Передано союзнику")
+	_refresh_inv()
+
+func give_gold(amount: int) -> void:
+	if not Net.active:
+		show_toast("Делиться можно только в сетевой игре")
+		return
+	var rp = _nearest_remote()
+	if rp == null:
+		show_toast("Подойдите ближе к союзнику")
+		return
+	var amt: int = mini(amount, player.gold)
+	if amt <= 0:
+		show_toast("Нет золота")
+		return
+	player.gold -= amt
+	rpc_id(rp.peer_id, "_net_receive_gold", amt)
+	Sfx.coin()
+	show_toast("Передано %d золота" % amt)
+	_refresh_inv()
+
+@rpc("any_peer", "reliable", "call_remote")
+func _net_receive_item(kind: String, v: int) -> void:
+	match kind:
+		"w": player.own_weapon(v)
+		"s": player.own_shield(v)
+		"helm": player.helmet_owned = true
+		"armor": player.own_armor(v)
+	show_toast("Союзник передал вам предмет!")
+
+@rpc("any_peer", "reliable", "call_remote")
+func _net_receive_gold(amt: int) -> void:
+	player.add_gold(amt)
+	show_toast("Союзник передал %d золота!" % amt)
+
 func _spawn_world_enemies() -> void:
 	var camps := [
 		Vector3(120, 0, 25), Vector3(60, 0, -130), Vector3(205, 0, -60),
@@ -1400,6 +1465,9 @@ func _spawn_world_enemies() -> void:
 		Vector3(215, 0, 150), Vector3(-40, 0, -185), Vector3(30, 0, 260),
 		Vector3(-265, 0, -40), Vector3(305, 0, -150), Vector3(160, 0, -340),
 		Vector3(-130, 0, 295), Vector3(265, 0, 285),
+		# extra camps for a busier world
+		Vector3(40, 0, 60), Vector3(-60, 0, -60),
+		Vector3(150, 0, 95), Vector3(-160, 0, 60),
 	]
 	for c in camps:
 		_spawn_camp(c, false)
@@ -1422,16 +1490,21 @@ func _spawn_saray_horde() -> void:
 	_make_enemy(GameEnemy.Kind.KHAN, c + Vector3(0, 0, 4))
 
 func _spawn_camp(center: Vector3, boss: bool) -> void:
-	var n := randi_range(3, 5)
+	var n := randi_range(4, 6)
 	for i in range(n):
 		var r := randf()
 		var k := GameEnemy.Kind.RAIDER
-		if r < 0.25: k = GameEnemy.Kind.ARCHER
-		elif r < 0.5: k = GameEnemy.Kind.SPEARMAN
-		elif r < 0.65: k = GameEnemy.Kind.BRUTE
-		var off := Vector3(randf_range(-7, 7), 0, randf_range(-7, 7))
+		if r < 0.16: k = GameEnemy.Kind.ARCHER
+		elif r < 0.30: k = GameEnemy.Kind.MARAUDER
+		elif r < 0.45: k = GameEnemy.Kind.SPEARMAN
+		elif r < 0.58: k = GameEnemy.Kind.VETERAN
+		elif r < 0.70: k = GameEnemy.Kind.BRUTE
+		elif r < 0.78: k = GameEnemy.Kind.CHAMPION
+		var off := Vector3(randf_range(-8, 8), 0, randf_range(-8, 8))
 		_make_enemy(k, center + off)
 	if boss:
+		_make_enemy(GameEnemy.Kind.CHAMPION, center + Vector3(5, 0, 0))
+		_make_enemy(GameEnemy.Kind.CHAMPION, center + Vector3(-5, 0, 0))
 		_make_enemy(GameEnemy.Kind.BOSS, center)
 
 func _make_enemy(kind: int, pos: Vector3) -> void:
@@ -1457,6 +1530,9 @@ func _gold_for(kind: int) -> int:
 		GameEnemy.Kind.MONGOL_ARCHER: return 26
 		GameEnemy.Kind.MONGOL_HEAVY: return 45
 		GameEnemy.Kind.KHAN: return 600
+		GameEnemy.Kind.MARAUDER: return 9
+		GameEnemy.Kind.VETERAN: return 18
+		GameEnemy.Kind.CHAMPION: return 40
 		_: return 8
 
 func _spawn_pickups() -> void:
@@ -1491,13 +1567,23 @@ func _make_pickup(kind: String, value: float, pos: Vector3) -> void:
 	add_child(pk)
 	pk.global_position = pos
 
-func on_enemy_killed(pos: Vector3, gold: int) -> void:
-	kills += 1
+func on_enemy_killed(pos: Vector3, gold: int, by: int = 1) -> void:
 	alive -= 1
-	if player:
-		player.add_gold(gold)
+	# credit the kill to whoever landed the killing blow
+	if not Net.active or by == Net.my_id():
+		kills += 1
+		if player:
+			player.add_gold(gold)
+	else:
+		rpc_id(by, "_net_kill_credit", gold)
 	if randf() < 0.35:
 		_make_pickup("gold", randf_range(6, 16), pos + Vector3(0, 1, 0))
+
+@rpc("authority", "reliable", "call_remote")
+func _net_kill_credit(gold: int) -> void:
+	kills += 1
+	if player:
+		player.add_gold(gold)
 
 func on_boss_killed() -> void:
 	boss_defeated = true
@@ -1685,8 +1771,13 @@ func _process(delta: float) -> void:
 				_refresh_inv()
 			var bi2: int = controls.consume_bag()
 			if bi2 >= 0 and bi2 < _bag_items.size():
-				_equip_bag(_bag_items[bi2])
+				if controls.inv_give and Net.active:
+					give_bag_item(_bag_items[bi2])
+				else:
+					_equip_bag(_bag_items[bi2])
 				_refresh_inv()
+			if controls.consume_give_gold():
+				give_gold(50)
 			if controls.consume_close():
 				state = "play"
 				controls.state = 1
@@ -1779,6 +1870,8 @@ func _update_saray() -> void:
 	saray_near = near
 
 func _open_inventory() -> void:
+	controls.net_active = Net.active
+	controls.inv_give = false
 	_refresh_inv()
 	state = "inv"
 	controls.state = 5
