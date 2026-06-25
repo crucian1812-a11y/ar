@@ -1669,10 +1669,13 @@ func _build_shop() -> void:
 	shop.append({"kind": "booster_vit"})
 	shop.append({"kind": "heal", "v": 40.0, "name": "Лечебное зелье", "price": 25})
 	shop.append({"kind": "helmet", "v": 0, "name": "Шлем", "price": 50})
-	shop.append({"kind": "armortier", "v": 1, "name": "Кольчуга", "price": 90})
-	shop.append({"kind": "armortier", "v": 2, "name": "Латный доспех", "price": 200})
-	shop.append({"kind": "shield", "v": 1, "name": player.SHIELDS[1]["name"], "price": int(player.SHIELDS[1]["price"])})
-	shop.append({"kind": "shield", "v": 2, "name": player.SHIELDS[2]["name"], "price": int(player.SHIELDS[2]["price"])})
+	# armour tiers (skip "none")
+	var armor_prices := [0, 90, 200, 340]
+	for t in range(1, player.ARMOR_TIERS.size()):
+		shop.append({"kind": "armortier", "v": t, "name": String(player.ARMOR_NAMES[t]).capitalize(), "price": armor_prices[t] if t < armor_prices.size() else 100 * t})
+	# shields (skip "none")
+	for s in range(1, player.SHIELDS.size()):
+		shop.append({"kind": "shield", "v": s, "name": String(player.SHIELDS[s]["name"]), "price": int(player.SHIELDS[s]["price"])})
 	# weapons (non-rare, with a price), sorted cheapest first
 	var ws := []
 	for i in range(player.WEAPONS.size()):
@@ -2064,9 +2067,13 @@ func _select_shop(i: int) -> void:
 		controls.shop_is3d = true
 		match item["kind"]:
 			"weapon": set_preview_weapon(player.WEAPONS[int(item["v"])])
-			"shield": set_preview_weapon({"model": player.SHIELDS[int(item["v"])]["model"]})
+			"shield": set_preview_weapon(player.SHIELDS[int(item["v"])])
 			"helmet": set_preview_weapon({"model": "proc:helmet", "tint": Color(0.62, 0.64, 0.72)})
-			"armortier": set_preview_weapon({"model": ("proc:mail" if int(item["v"]) == 1 else "proc:plate"), "tint": Color(0.6, 0.62, 0.68)})
+			"armortier":
+				var av := int(item["v"])
+				var amodel := "proc:mail" if av == 1 else "proc:plate"
+				var atint := Color(0.85, 0.72, 0.32) if av >= 3 else Color(0.6, 0.62, 0.68)
+				set_preview_weapon({"model": amodel, "tint": atint})
 	else:
 		controls.shop_is3d = false
 		controls.shop_icon = icon

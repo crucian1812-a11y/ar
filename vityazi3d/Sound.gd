@@ -77,6 +77,14 @@ func _setup_buses() -> void:
 	rv.dry = 0.92
 	rv.spread = 0.6
 	AudioServer.add_bus_effect(2, rv)
+	# hall reverb + gentle low-pass warmth on the Music bus
+	var mrv := AudioEffectReverb.new()
+	mrv.room_size = 0.78
+	mrv.wet = 0.22
+	mrv.dry = 0.85
+	mrv.spread = 0.9
+	mrv.hipass = 0.05
+	AudioServer.add_bus_effect(1, mrv)
 
 func swing() -> void: _play(_swing)
 func hit() -> void: _play(_hit)
@@ -149,6 +157,53 @@ func _wav(data: PackedByteArray, loop: bool, n: int) -> AudioStreamWAV:
 		w.loop_begin = 0
 		w.loop_end = n
 	return w
+
+# ---------- richer music renderer (float mix → soft-clipped 16-bit) ----------
+
+# add one harmonic-rich note into a float mix buffer
+func _voice(mix: PackedFloat32Array, start: int, length: int, freq: float, vol: float, harm: Array, attack: float, release: float, decexp: float, vib: float) -> void:
+	var n := mix.size()
+	var rel_n := maxi(1, int(RATE * release))
+	var att_n := maxi(1, int(RATE * attack))
+	for i in range(length):
+		var idx := start + i
+		if idx >= n:
+			break
+		var t := float(i) / RATE
+		var env := minf(float(i) / att_n, 1.0) * exp(-decexp * t)
+		var rem := length - i
+		if rem < rel_n:
+			env *= float(rem) / rel_n
+		var ph := TAU * freq * t + vib * sin(TAU * 5.2 * t)
+		var s := 0.0
+		for k in range(harm.size()):
+			s += float(harm[k]) * sin(ph * float(k + 1))
+		mix[idx] += s * env * vol
+
+# percussive drum hit (kick/tom/snare-ish) into the mix
+func _drum(mix: PackedFloat32Array, start: int, vol: float, p0: float, p1: float, decexp: float, noise: float) -> void:
+	var n := mix.size()
+	var length := int(RATE * 0.4)
+	for i in range(length):
+		var idx := start + i
+		if idx >= n:
+			break
+		var t := float(i) / RATE
+		var tt := clampf(t * 4.0, 0.0, 1.0)
+		var pitch: float = lerp(p0, p1, tt)
+		var env := exp(-decexp * t)
+		var body := sin(TAU * pitch * t)
+		var nz := (randf() * 2.0 - 1.0) * exp(-t * 60.0) * noise
+		mix[idx] += (body * (1.0 - noise) + nz) * env * vol
+
+func _commit_music(mix: PackedFloat32Array, loop: bool) -> AudioStreamWAV:
+	var n := mix.size()
+	var data := _buf(n)
+	for i in range(n):
+		var s: float = mix[i] * 1.1
+		s = s / (1.0 + absf(s))      # soft saturation, no harsh clipping
+		_put(data, i, s)
+	return _wav(data, loop, n)
 
 func _whoosh(dur: float, f0: float, f1: float, vol: float) -> AudioStreamWAV:
 	var n := int(RATE * dur)
@@ -225,26 +280,39 @@ func _chime(freqs: Array, note: float, vol: float) -> AudioStreamWAV:
 	return _wav(data, true if false else false, n)
 
 # gentle ambient: pentatonic melody + soft bass drone
+# calm exploration: folk chord progression with гусли-like arpeggios, pad & bass
 func _make_music() -> AudioStreamWAV:
-	var scale := [220.0, 247.0, 294.0, 330.0, 392.0, 440.0, 494.0]
-	var seq := [0, 2, 4, 3, 5, 4, 2, 0, 3, 5, 6, 5, 4, 2, 3, 0]
-	var bass := [110.0, 110.0, 147.0, 110.0, 165.0, 147.0, 110.0, 98.0]
-	var note := 0.6
-	var per := int(RATE * note)
-	var n := per * seq.size()
-	var data := _buf(n)
-	for k in range(seq.size()):
-		var f: float = scale[seq[k]]
-		var bf: float = bass[k % bass.size()]
-		for i in range(per):
-			var t := float(i) / per
-			var env := sin(PI * clampf(t, 0.0, 1.0)) * 0.55
-			var mel := sin(TAU * f * (float(i) / RATE)) + sin(TAU * f * 2.0 * (float(i) / RATE)) * 0.2
-			var idx := k * per + i
-			var bassv := sin(TAU * bf * (float(idx) / RATE)) * 0.18
-			var fifth := sin(TAU * f * 1.5 * (float(i) / RATE)) * 0.08
-			_put(data, idx, mel * env * 0.45 + bassv + fifth * env)
-	return _wav(data, true, n)
+	var bar := 2.2
+	var bars := [
+		[110.0, [220.0, 261.6, 329.6]],  # Am
+		[87.3, [174.6, 220.0, 261.6]],   # F
+		[130.8, [261.6, 329.6, 392.0]],  # C
+		[98.0, [196.0, 246.9, 293.7]],   # G
+		[110.0, [220.0, 261.6, 329.6]],  # Am
+		[146.8, [220.0, 293.7, 349.2]],  # Dm
+		[130.8, [261.6, 329.6, 392.0]],  # C
+		[98.0, [196.0, 246.9, 293.7]],   # G
+	]
+	var per := int(RATE * bar)
+	var n := per * bars.size()
+	var mix := PackedFloat32Array(); mix.resize(n)
+	var PAD := [1.0, 0.4, 0.22, 0.12]
+	var PLUCK := [1.0, 0.55, 0.32, 0.18, 0.1]
+	var BASS := [1.0, 0.5, 0.25]
+	for b in range(bars.size()):
+		var root: float = bars[b][0]
+		var tri: Array = bars[b][1]
+		var s0 := b * per
+		_voice(mix, s0, per, root, 0.34, BASS, 0.02, 0.35, 1.1, 0.0)
+		_voice(mix, s0, per, root * 2.0, 0.10, BASS, 0.04, 0.35, 0.9, 0.0)
+		for tf in tri:
+			_voice(mix, s0, per, float(tf), 0.10, PAD, 0.3, 0.5, 0.35, 0.012)
+		# arpeggio melody, 6 plucks per bar
+		var mel := [tri[0], tri[1], tri[2], float(tri[1]) * 2.0, tri[2], float(tri[0]) * 2.0]
+		var step := per / 6
+		for m in range(6):
+			_voice(mix, s0 + m * step, step, float(mel[m]) * 2.0, 0.22, PLUCK, 0.008, 0.1, 4.5, 0.015)
+	return _commit_music(mix, true)
 
 # footstep: short low thud + surface-coloured noise burst
 func _footstep(dur: float, vol: float, cutoff: float) -> AudioStreamWAV:
@@ -262,48 +330,46 @@ func _footstep(dur: float, vol: float, cutoff: float) -> AudioStreamWAV:
 		_put(data, i, (thud * 0.6 + prev * 0.7) * env * vol)
 	return _wav(data, false, n)
 
-# tense combat theme: faster minor ostinato + driving low pulse
+# tense combat: minor ostinato + driving eighth-note bass + kick/snare beat
 func _make_combat() -> AudioStreamWAV:
-	var scale := [220.0, 261.6, 293.7, 311.1, 349.2, 392.0, 415.3]   # A minor-ish
+	var scale := [220.0, 261.6, 293.7, 311.1, 349.2, 392.0, 415.3]   # A natural minor
 	var seq := [0, 4, 3, 4, 5, 4, 3, 1, 0, 3, 4, 6, 5, 4, 3, 4]
-	var bass := [110.0, 110.0, 110.0, 98.0, 116.5, 116.5, 98.0, 87.3]
+	var bassn := [110.0, 110.0, 110.0, 98.0, 116.5, 116.5, 98.0, 87.3]
 	var note := 0.34
 	var per := int(RATE * note)
 	var n := per * seq.size()
-	var data := _buf(n)
+	var mix := PackedFloat32Array(); mix.resize(n)
+	var LEAD := [1.0, 0.5, 0.3, 0.15]
+	var BASS := [1.0, 0.6, 0.3]
 	for k in range(seq.size()):
-		var f: float = scale[seq[k]]
-		var bf: float = bass[k % bass.size()]
-		for i in range(per):
-			var t := float(i) / per
-			var env := sin(PI * clampf(t * 1.4, 0.0, 1.0)) * 0.5
-			var mel := sin(TAU * f * (float(i) / RATE)) + sin(TAU * f * 2.0 * (float(i) / RATE)) * 0.3
-			var idx := k * per + i
-			# pulsing bass eighth-notes
-			var pulse: float = 1.0 if fmod(t, 0.5) < 0.25 else 0.5
-			var bassv := sin(TAU * bf * (float(idx) / RATE)) * 0.22 * pulse
-			_put(data, idx, mel * env * 0.4 + bassv)
-	return _wav(data, true, n)
+		var s0 := k * per
+		_voice(mix, s0, per, scale[seq[k]], 0.26, LEAD, 0.006, 0.08, 3.0, 0.02)
+		# two eighth-note bass pulses per step
+		var bf: float = bassn[k % bassn.size()]
+		_voice(mix, s0, per / 2, bf, 0.30, BASS, 0.005, 0.05, 2.5, 0.0)
+		_voice(mix, s0 + per / 2, per / 2, bf, 0.24, BASS, 0.005, 0.05, 2.5, 0.0)
+		# beat: kick on, snare off-beat
+		_drum(mix, s0, 0.5, 150.0, 55.0, 16.0, 0.1)
+		_drum(mix, s0 + per / 2, 0.32, 320.0, 180.0, 22.0, 0.7)
+	return _commit_music(mix, true)
 
-# war-drums theme for the horde capital: tom pattern + ominous drone
+# war-drums of the horde: ominous drone + low brass + tom pattern
 func _make_horde() -> AudioStreamWAV:
 	var note := 0.30
 	var per := int(RATE * note)
 	var pattern := [1.0, 0.0, 0.6, 0.0, 1.0, 0.4, 0.7, 0.0, 1.0, 0.0, 0.6, 0.4, 1.0, 0.7, 0.5, 0.3]
 	var n := per * pattern.size()
-	var data := _buf(n)
-	var drone := 65.4   # low C
+	var mix := PackedFloat32Array(); mix.resize(n)
+	# sustained low drone + fifth across the whole loop
+	var DRONE := [1.0, 0.5, 0.3, 0.2]
+	_voice(mix, 0, n, 65.4, 0.16, DRONE, 0.5, 0.6, 0.05, 0.02)        # low C
+	_voice(mix, 0, n, 98.0, 0.08, DRONE, 0.6, 0.6, 0.05, 0.02)        # fifth
+	# menacing brass stabs every 4 steps
+	var BRASS := [1.0, 0.7, 0.5, 0.35, 0.2]
+	for s in range(0, pattern.size(), 4):
+		_voice(mix, s * per, per * 2, 130.8, 0.18, BRASS, 0.03, 0.3, 1.2, 0.01)
+	# tom pattern
 	for k in range(pattern.size()):
-		var hit: float = pattern[k]
-		for i in range(per):
-			var t := float(i) / per
-			var idx := k * per + i
-			# continuous ominous drone + its fifth
-			var dr := sin(TAU * drone * (float(idx) / RATE)) * 0.16 + sin(TAU * drone * 1.5 * (float(idx) / RATE)) * 0.07
-			# drum hit: pitch-dropping tom + noise transient
-			var denv: float = exp(-t * 9.0) * hit
-			var pitch: float = lerp(170.0, 70.0, clampf(t * 4.0, 0.0, 1.0))
-			var tom := sin(TAU * pitch * (float(i) / RATE))
-			var transient := (randf() * 2.0 - 1.0) * exp(-t * 45.0) * 0.5
-			_put(data, idx, dr + (tom * 0.7 + transient) * denv * 0.5)
-	return _wav(data, true, n)
+		if pattern[k] > 0.0:
+			_drum(mix, k * per, 0.55 * float(pattern[k]), 170.0, 68.0, 9.0, 0.45)
+	return _commit_music(mix, true)

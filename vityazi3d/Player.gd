@@ -25,7 +25,7 @@ var WEAPONS := [
 	# --- unique rewards (quests only, not sold) ---
 	{"name": "Меч-кладенец", "cls": "Двуручник", "model": "res://assets/weapons/sword_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 120.0, "reach": 3.3, "cd": 0.7, "two": true, "rare": true, "tint": Color(1.0, 0.84, 0.30)},
 	{"name": "Секира Перуна", "cls": "Секира", "model": "res://assets/weapons/axe_2handed.gltf", "anim": "2H_Melee_Attack_Chop", "dmg": 140.0, "reach": 3.0, "cd": 0.85, "two": true, "rare": true, "tint": Color(0.65, 0.85, 1.0)},
-	{"name": "Лук Соловья", "cls": "Стрелковое", "model": "res://assets/weapons/crossbow_2handed.gltf", "anim": "2H_Ranged_Shoot", "dmg": 82.0, "reach": 26.0, "cd": 0.8, "two": true, "ranged": true, "rare": true, "tint": Color(0.55, 1.0, 0.55)},
+	{"name": "Лук Соловья", "cls": "Стрелковое", "model": "res://assets/weapons/crossbow_2handed.gltf", "anim": "2H_Ranged_Shoot", "dmg": 56.0, "reach": 23.0, "cd": 1.05, "two": true, "ranged": true, "rare": true, "tint": Color(0.55, 1.0, 0.55)},
 	# --- extra purchasable arsenal ---
 	{"name": "Ржавый меч", "cls": "Меч", "model": "res://assets/weapons/sword_1handed.gltf", "anim": "1H_Melee_Attack_Slice_Diagonal", "dmg": 28.0, "reach": 2.6, "cd": 0.55, "two": false, "price": 25, "tint": Color(0.45, 0.38, 0.30)},
 	{"name": "Стальной меч", "cls": "Меч", "model": "res://assets/weapons/sword_1handed.gltf", "anim": "1H_Melee_Attack_Slice_Diagonal", "dmg": 56.0, "reach": 2.8, "cd": 0.52, "two": false, "price": 130, "tint": Color(0.7, 0.78, 0.9)},
@@ -46,9 +46,11 @@ var SHIELDS := [
 	{"name": "Без щита", "model": "", "armor": 0.0, "price": 0},
 	{"name": "Круглый щит", "model": "res://assets/weapons/shield_round.gltf", "armor": 0.10, "price": 55},
 	{"name": "Большой щит", "model": "res://assets/weapons/shield_square.gltf", "armor": 0.18, "price": 130},
+	{"name": "Дружинный щит", "model": "res://assets/weapons/shield_round.gltf", "armor": 0.14, "price": 95, "tint": Color(0.55, 0.62, 0.78)},
+	{"name": "Княжеская павеза", "model": "res://assets/weapons/shield_square.gltf", "armor": 0.25, "price": 230, "tint": Color(0.85, 0.72, 0.32)},
 ]
-var ARMOR_TIERS := [0.0, 0.12, 0.22]
-var ARMOR_NAMES := ["нет", "кольчуга", "латы"]
+var ARMOR_TIERS := [0.0, 0.12, 0.22, 0.30]
+var ARMOR_NAMES := ["нет", "кольчуга", "латы", "княжеский доспех"]
 
 # stat upgrades (levelled)
 var str_level := 0
@@ -294,9 +296,13 @@ func _refresh_shield() -> void:
 		return
 	for c in shield_holder.get_children():
 		c.queue_free()
-	var two: bool = WEAPONS[equipped_weapon].get("two", false)
+	var two: bool = equipped_weapon >= 0 and WEAPONS[equipped_weapon].get("two", false)
 	if equipped_shield >= 1 and not two and SHIELDS[equipped_shield]["model"] != "":
-		shield_holder.add_child(load(SHIELDS[equipped_shield]["model"]).instantiate())
+		var sh = SHIELDS[equipped_shield]
+		if main and main.has_method("make_weapon_visual"):
+			shield_holder.add_child(main.make_weapon_visual(sh))
+		else:
+			shield_holder.add_child(load(sh["model"]).instantiate())
 
 func toggle_helmet() -> void:
 	if not helmet_owned:
