@@ -44,6 +44,12 @@ var saray_unlocked := false
 var saray_barrier: Node3D = null
 var saray_near := false
 
+# dense forests (with wolf packs)
+var forests := [
+	{"pos": Vector3(-150, 0, -120), "r": 85.0},
+	{"pos": Vector3(175, 0, 180), "r": 70.0},
+]
+
 # textured materials (procedural normal maps) + particle assets
 var _nrm_wood: NoiseTexture2D
 var _nrm_stone: NoiseTexture2D
@@ -86,14 +92,24 @@ var _bag_items: Array = []   # parallel to controls.inv_bag: [{"kind","v"}]
 
 var quests := [
 	{"title": "Очистка дорог", "desc": "Победи 6 врагов в округе.", "type": "kills", "target": 6, "reward": 70, "weapon": 7, "weapon_name": "Меч-кладенец"},
+	{"title": "Волчья стая", "desc": "Истреби 5 волков в лесу.", "type": "wolves", "target": 5, "reward": 80, "reward_shield": 1, "reward_name": "Круглый щит"},
 	{"title": "Казна княжества", "desc": "Накопи 200 золота.", "type": "gold", "target": 200, "reward": 90, "weapon": 9, "weapon_name": "Лук Соловья"},
+	{"title": "Странствие по Руси", "desc": "Побывай во всех 4 городах.", "type": "visit", "target": 4, "reward": 110, "reward_helmet": true, "reward_name": "Шлем"},
 	{"title": "Древние реликвии", "desc": "Собери 5 артефактов.", "type": "pickups", "target": 5, "reward": 120, "weapon": 8, "weapon_name": "Секира Перуна"},
+	{"title": "Голова воеводы", "desc": "Срази воеводу в его крепости.", "type": "boss", "target": 1, "reward": 160, "reward_armor": 2, "reward_name": "Латный доспех"},
+	{"title": "Гроза недругов", "desc": "Победи 25 врагов.", "type": "kills", "target": 25, "reward": 220},
 ]
 var quest_idx := 0
 var quest_active := false
 var kills_base := 0
 var pickups_collected := 0
 var pickups_base := 0
+var wolves_killed := 0
+var wolves_base := 0
+var bosses_killed := 0
+var boss_base := 0
+var visited_cities := {}
+var mamai_defeated := false
 
 func _ready() -> void:
 	randomize()
@@ -115,6 +131,7 @@ func _ready() -> void:
 	_build_villages()
 	_build_roads()
 	_build_saray_structures()
+	_build_forest()
 	_spawn_player()
 	_setup_ui()
 	_build_preview_studio()
@@ -579,6 +596,28 @@ func _make_npc(pos: Vector3, kind := "merchant") -> void:
 	npc.kind = kind
 	add_child(npc)
 	npc.global_position = pos
+
+func _build_forest() -> void:
+	for f in forests:
+		var fc: Vector3 = f["pos"]
+		var fr: float = f["r"]
+		var n := int(fr * 3.2)
+		for i in range(n):
+			var a := randf() * TAU
+			var d := sqrt(randf()) * fr
+			var x := fc.x + cos(a) * d
+			var z := fc.z + sin(a) * d
+			var skip := false
+			for c in cities:
+				if Vector2(x - c["pos"].x, z - c["pos"].z).length() < 42.0:
+					skip = true; break
+			if not skip:
+				for vc in village_centers:
+					if Vector2(x - vc.x, z - vc.z).length() < 14.0:
+						skip = true; break
+			if skip:
+				continue
+			_make_tree(Vector3(x, terrain_height(x, z), z))
 
 # ---------------- Сарай-Бату (orda capital) ----------------
 
@@ -1273,6 +1312,12 @@ func start_game(id: int) -> void:
 	kills_base = 0
 	pickups_collected = 0
 	pickups_base = 0
+	wolves_killed = 0
+	wolves_base = 0
+	bosses_killed = 0
+	boss_base = 0
+	visited_cities = {}
+	mamai_defeated = false
 	state = "play"
 	controls.state = 1
 	mood_t = 0.0
@@ -1473,6 +1518,20 @@ func _spawn_world_enemies() -> void:
 		_spawn_camp(c, false)
 	_spawn_camp(Vector3(-300, 0, -250), true)   # воевода fortress (mid boss)
 	_spawn_saray_horde()
+	_spawn_wolves()
+
+func _spawn_wolves() -> void:
+	for f in forests:
+		var fc: Vector3 = f["pos"]
+		var fr: float = f["r"]
+		var packs := 3
+		for pk in range(packs):
+			var pa := randf() * TAU
+			var pd := randf_range(10.0, fr - 12.0)
+			var center := fc + Vector3(cos(pa) * pd, 0, sin(pa) * pd)
+			var n := randi_range(3, 5)
+			for i in range(n):
+				_make_enemy(GameEnemy.Kind.WOLF, center + Vector3(randf_range(-6, 6), 0, randf_range(-6, 6)))
 
 func _spawn_saray_horde() -> void:
 	var c := SARAY_POS
@@ -1533,6 +1592,7 @@ func _gold_for(kind: int) -> int:
 		GameEnemy.Kind.MARAUDER: return 9
 		GameEnemy.Kind.VETERAN: return 18
 		GameEnemy.Kind.CHAMPION: return 40
+		GameEnemy.Kind.WOLF: return 12
 		_: return 8
 
 func _spawn_pickups() -> void:
@@ -1567,8 +1627,10 @@ func _make_pickup(kind: String, value: float, pos: Vector3) -> void:
 	add_child(pk)
 	pk.global_position = pos
 
-func on_enemy_killed(pos: Vector3, gold: int, by: int = 1) -> void:
+func on_enemy_killed(pos: Vector3, gold: int, by: int = 1, kind: int = -1) -> void:
 	alive -= 1
+	if kind == GameEnemy.Kind.WOLF:
+		wolves_killed += 1
 	# credit the kill to whoever landed the killing blow
 	if not Net.active or by == Net.my_id():
 		kills += 1
@@ -1587,11 +1649,14 @@ func _net_kill_credit(gold: int) -> void:
 
 func on_boss_killed() -> void:
 	boss_defeated = true
+	bosses_killed += 1
 	show_toast("Воевода повержен! Но главный враг — Мамай в Сарай-Бату.")
 
 func on_khan_killed() -> void:
-	# defeating Мамай is the true victory
-	_win()
+	# defeating Мамай is a great victory — but the open world keeps going
+	mamai_defeated = true
+	show_toast("ПОБЕДА! Мамай повержен, Русь свободна! Можно играть дальше.")
+	Sfx.quest()
 
 func show_toast(text: String) -> void:
 	if controls:
@@ -1755,8 +1820,7 @@ func _process(delta: float) -> void:
 			_update_mood(delta)
 			_net_tick(delta)
 			if player.hp <= 0.0:
-				_game_over()
-				return
+				_respawn_player()
 			if controls.consume_interact() and near_npc != null:
 				if near_npc.kind == "quest":
 					_open_quest()
@@ -1819,6 +1883,7 @@ func _update_region() -> void:
 	for c in cities:
 		if player.global_position.distance_to(c["pos"]) < 46.0:
 			rname = c["name"]
+			visited_cities[c["name"]] = true
 			break
 	if rname == "" and player.global_position.distance_to(SARAY_POS) < 52.0:
 		rname = "Сарай-Бату"
@@ -2033,6 +2098,9 @@ func _quest_progress() -> int:
 		"kills": return kills - kills_base
 		"pickups": return pickups_collected - pickups_base
 		"gold": return player.gold
+		"wolves": return wolves_killed - wolves_base
+		"boss": return bosses_killed - boss_base
+		"visit": return visited_cities.size()
 	return 0
 
 func _quest_done() -> bool:
@@ -2053,20 +2121,26 @@ func _quest_action() -> void:
 	var q = quests[quest_idx]
 	if not quest_active:
 		quest_active = true
-		if q["type"] == "kills":
-			kills_base = kills
-		elif q["type"] == "pickups":
-			pickups_base = pickups_collected
+		match q["type"]:
+			"kills": kills_base = kills
+			"pickups": pickups_base = pickups_collected
+			"wolves": wolves_base = wolves_killed
+			"boss": boss_base = bosses_killed
 		show_toast("Задание принято: " + q["title"])
 		_refresh_quest_dialog()
 	elif _quest_done():
 		player.add_gold(int(q["reward"]))
 		Sfx.quest()
+		var extra := ""
 		if q.has("weapon"):
-			player.own_weapon(int(q["weapon"]))
-			show_toast("Награда: +%d золота и %s! Наденьте в снаряжении (☰)" % [int(q["reward"]), q["weapon_name"]])
-		else:
-			show_toast("Награда получена: +%d золота" % int(q["reward"]))
+			player.own_weapon(int(q["weapon"])); extra = " и " + String(q["weapon_name"])
+		elif q.has("reward_shield"):
+			player.own_shield(int(q["reward_shield"])); extra = " и " + String(q["reward_name"])
+		elif q.has("reward_armor"):
+			player.own_armor(int(q["reward_armor"])); extra = " и " + String(q["reward_name"])
+		elif q.has("reward_helmet"):
+			player.helmet_owned = true; extra = " и " + String(q["reward_name"])
+		show_toast("Награда: +%d золота%s!" % [int(q["reward"]), extra])
 		quest_idx += 1
 		quest_active = false
 		_refresh_quest_dialog()
@@ -2089,6 +2163,8 @@ func _refresh_quest_dialog() -> void:
 		var rw := "Награда: %d золота" % int(q["reward"])
 		if q.has("weapon_name"):
 			rw += " + ✦ %s" % q["weapon_name"]
+		elif q.has("reward_name"):
+			rw += " + %s" % q["reward_name"]
 		controls.quest_info = rw
 		controls.quest_btn = "Принять"
 	elif _quest_done():
@@ -2097,6 +2173,18 @@ func _refresh_quest_dialog() -> void:
 	else:
 		controls.quest_info = "Прогресс: %d/%d" % [_quest_progress(), int(q["target"])]
 		controls.quest_btn = "В пути (закрыть)"
+
+func _respawn_player() -> void:
+	# no permanent game-over: fall, lose some gold, revive at Новгород
+	var lost: int = int(player.gold * 0.2)
+	player.gold -= lost
+	player.hp = player.max_hp
+	player.velocity = Vector3.ZERO
+	player.global_position = Vector3(0, 2.0, 12)
+	player.hurt_t = 3.0      # brief invulnerability so you aren't instantly re-killed
+	current_region = ""
+	Sfx.hurt()
+	show_toast("Вы пали! Возрождение в Новгороде." + ((" −%d золота" % lost) if lost > 0 else ""))
 
 func _game_over() -> void:
 	state = "gameover"

@@ -1,7 +1,7 @@
 extends CharacterBody3D
 class_name GameEnemy
 
-enum Kind { RAIDER, SPEARMAN, ARCHER, BRUTE, BOSS, MONGOL, MONGOL_ARCHER, MONGOL_HEAVY, KHAN, MARAUDER, VETERAN, CHAMPION }
+enum Kind { RAIDER, SPEARMAN, ARCHER, BRUTE, BOSS, MONGOL, MONGOL_ARCHER, MONGOL_HEAVY, KHAN, MARAUDER, VETERAN, CHAMPION, WOLF }
 
 var kind: int = Kind.RAIDER
 var main
@@ -26,6 +26,8 @@ var net_hpfrac := 1.0
 var net_moving := false
 var aggroed := false            # actively aware of / chasing a player
 var last_attacker := 1          # net id of whoever last hit it (kill credit)
+var aggro_range := 22.0         # per-kind aggro radius
+var procedural := false         # build a code mesh instead of loading a glb
 
 const AGGRO := 22.0
 const GRAVITY := 22.0
@@ -68,7 +70,12 @@ func _ready() -> void:
 func _apply_kind() -> void:
 	var path := "res://assets/models/Barbarian.glb"
 	var show: Array = []
+	aggro_range = AGGRO
 	match kind:
+		Kind.WOLF:
+			hp = 55; speed = 5.6; dmg = 12; reach = 2.0; atk_cd_time = 0.8; mscale = 1.0
+			aggro_range = 36.0; procedural = true
+			attack_anim = ""
 		Kind.RAIDER:
 			hp = 55; speed = 3.9; dmg = 8; reach = 2.2; atk_cd_time = 1.2; mscale = 0.78
 			path = "res://assets/models/Barbarian.glb"; show = ["1H_Axe", "Barbarian_Round_Shield"]
@@ -124,6 +131,12 @@ var _model_path := ""
 var _show: Array = []
 
 func _build_model() -> void:
+	if procedural:
+		model = _build_wolf()
+		add_child(model)
+		model.scale = Vector3.ONE * mscale
+		anim = null
+		return
 	model = load(_model_path).instantiate()
 	add_child(model)
 	model.scale = Vector3.ONE * mscale
@@ -183,6 +196,64 @@ func _flat_e(c: Color) -> StandardMaterial3D:
 	m.roughness = 1.0
 	return m
 
+# low-poly wolf built in code (no quadruped model in the asset pack)
+func _build_wolf() -> Node3D:
+	var root := Node3D.new()
+	var fur := StandardMaterial3D.new(); fur.albedo_color = Color(0.30, 0.29, 0.31); fur.roughness = 1.0
+	var dark := StandardMaterial3D.new(); dark.albedo_color = Color(0.18, 0.17, 0.19); dark.roughness = 1.0
+	# body
+	var body := MeshInstance3D.new()
+	var bb := BoxMesh.new(); bb.size = Vector3(0.5, 0.5, 1.15)
+	body.mesh = bb; body.material_override = fur; body.position = Vector3(0, 0.62, 0)
+	root.add_child(body)
+	# chest/hindquarters bulk
+	var rump := MeshInstance3D.new()
+	var rb := BoxMesh.new(); rb.size = Vector3(0.56, 0.56, 0.45)
+	rump.mesh = rb; rump.material_override = fur; rump.position = Vector3(0, 0.66, -0.45)
+	root.add_child(rump)
+	# neck + head
+	var neck := MeshInstance3D.new()
+	var nb := BoxMesh.new(); nb.size = Vector3(0.34, 0.34, 0.4)
+	neck.mesh = nb; neck.material_override = fur; neck.position = Vector3(0, 0.74, 0.6)
+	root.add_child(neck)
+	var head := MeshInstance3D.new()
+	var hb := BoxMesh.new(); hb.size = Vector3(0.36, 0.34, 0.4)
+	head.mesh = hb; head.material_override = fur; head.position = Vector3(0, 0.82, 0.86)
+	root.add_child(head)
+	var snout := MeshInstance3D.new()
+	var sb := BoxMesh.new(); sb.size = Vector3(0.18, 0.18, 0.26)
+	snout.mesh = sb; snout.material_override = dark; snout.position = Vector3(0, 0.74, 1.08)
+	root.add_child(snout)
+	# ears
+	for ex in [-0.12, 0.12]:
+		var ear := MeshInstance3D.new()
+		var ec := CylinderMesh.new(); ec.top_radius = 0.0; ec.bottom_radius = 0.09; ec.height = 0.18
+		ear.mesh = ec; ear.material_override = dark; ear.position = Vector3(ex, 1.04, 0.82)
+		root.add_child(ear)
+	# eyes (glowing)
+	var em := StandardMaterial3D.new(); em.albedo_color = Color(1.0, 0.85, 0.2)
+	em.emission_enabled = true; em.emission = Color(1.0, 0.8, 0.1); em.emission_energy_multiplier = 2.0
+	em.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for ex2 in [-0.1, 0.1]:
+		var eye := MeshInstance3D.new()
+		var es := SphereMesh.new(); es.radius = 0.045; es.height = 0.09
+		eye.mesh = es; eye.material_override = em; eye.position = Vector3(ex2, 0.86, 1.02)
+		root.add_child(eye)
+	# legs
+	for lx in [-0.18, 0.18]:
+		for lz in [0.4, -0.5]:
+			var leg := MeshInstance3D.new()
+			var lc := CylinderMesh.new(); lc.top_radius = 0.09; lc.bottom_radius = 0.07; lc.height = 0.6
+			leg.mesh = lc; leg.material_override = dark; leg.position = Vector3(lx, 0.3, lz)
+			root.add_child(leg)
+	# tail
+	var tail := MeshInstance3D.new()
+	var tc := CylinderMesh.new(); tc.top_radius = 0.05; tc.bottom_radius = 0.12; tc.height = 0.5
+	tail.mesh = tc; tail.material_override = fur
+	tail.position = Vector3(0, 0.78, -0.78); tail.rotation_degrees = Vector3(-50, 0, 0)
+	root.add_child(tail)
+	return root
+
 func _is_equip(n: String) -> bool:
 	for k in EQUIP_KEYS:
 		if k in n:
@@ -208,7 +279,7 @@ func _physics_process(delta: float) -> void:
 		hp = net_hpfrac * max_hp
 		var np = _nearest_player()
 		var npd: float = np.global_position.distance_to(global_position) if np else 999.0
-		aggroed = npd <= AGGRO
+		aggroed = npd <= aggro_range
 		if anim:
 			anim.active = npd < 80.0
 		if npd < 80.0:
@@ -232,7 +303,7 @@ func _physics_process(delta: float) -> void:
 		to.y = 0
 		var dist := to.length()
 		var dir := to.normalized() if dist > 0.01 else Vector3.ZERO
-		aggroed = dist <= AGGRO
+		aggroed = dist <= aggro_range
 
 		# performance: far enemies stop animating & idle in place
 		if dist > 80.0 and is_on_floor():
@@ -246,7 +317,7 @@ func _physics_process(delta: float) -> void:
 		elif anim and not anim.active:
 			anim.active = true
 
-		if dist > AGGRO:
+		if dist > aggro_range:
 			# passive: stay near the camp until the player comes close
 			var hto := home - global_position
 			hto.y = 0
@@ -340,7 +411,7 @@ func take_damage(d: float, by: int = 1) -> void:
 				main.on_boss_killed()
 			if kind == Kind.KHAN and main.has_method("on_khan_killed"):
 				main.on_khan_killed()
-			main.on_enemy_killed(global_position, gold_drop, last_attacker)
+			main.on_enemy_killed(global_position, gold_drop, last_attacker, kind)
 		queue_free()
 
 # ---------------- hp bar ----------------

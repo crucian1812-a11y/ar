@@ -179,9 +179,13 @@ func set_character(id: int) -> void:
 	owned_armors = []
 	equipped_armor = 0
 	match id:
-		0: owned_weapons = [0]; equipped_weapon = 0
-		1: owned_weapons = [2]; equipped_weapon = 2
-		_: owned_weapons = [4]; equipped_weapon = 4
+		0:  # Саша — меч и щит
+			owned_weapons = [0]; equipped_weapon = 0
+			owned_shields = [0, 1]; equipped_shield = 1
+		1:  # Глеб — топор
+			owned_weapons = [2]; equipped_weapon = 2
+		_:  # Федя — кинжал
+			owned_weapons = [4]; equipped_weapon = 4
 
 	if model != null:
 		model.queue_free()
