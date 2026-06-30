@@ -15,6 +15,8 @@ android {
         versionCode = 1
         versionName = "1.0"
         vectorDrawables { useSupportLibrary = true }
+        // ship only ARM ABIs — drops x86/x86_64 native OCR libs, ~halving the APK
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     buildTypes {

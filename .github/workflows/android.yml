@@ -59,3 +59,12 @@ jobs:
           git add booktracker.apk
           git commit -q -m "BookTracker APK build ${GITHUB_SHA}"
           git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" booktracker-apk-latest
+
+      - name: Create GitHub Release with APK
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bt-apk-${{ github.run_number }}
+          name: BookTracker APK (build ${{ github.run_number }})
+          files: booktracker/app/build/outputs/apk/debug/*.apk
+          body: "Трекер книг — APK. Скачай и установи на Android (разреши установку из неизвестных источников)."
