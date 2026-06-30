@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -136,6 +137,26 @@ fun BookDetailScreen(
 
             item { ProgressEditor(vm, b) }
 
+            if (b.description.isNotBlank()) {
+                item {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Описание", style = MaterialTheme.typography.labelLarge)
+                            Spacer(Modifier.height(8.dp))
+                            Text(b.description, style = MaterialTheme.typography.bodyMedium)
+                            if (b.categories.isNotBlank()) {
+                                Spacer(Modifier.height(8.dp))
+                                Text("Тема: ${b.categories}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+
+            item { MaterialsSection(b) }
+
             item {
                 Text("Цитаты (${quotes.size})",
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -160,6 +181,48 @@ fun BookDetailScreen(
                 }
             }
             item { Spacer(Modifier.height(72.dp)) }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun MaterialsSection(book: com.example.booktracker.data.Book) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val materials = com.example.booktracker.data.BookInfoService
+        .materialsFor(book.title, book.author, book.infoLink)
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Материалы по теме", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            Text("Видео, подкасты и статьи о книге",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                materials.forEach { m ->
+                    androidx.compose.material3.AssistChip(
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(m.url)
+                                    )
+                                )
+                            }
+                        },
+                        label = { Text(m.label) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.OpenInNew, contentDescription = null,
+                                modifier = Modifier.size(18.dp))
+                        }
+                    )
+                }
+            }
         }
     }
 }

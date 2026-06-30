@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: booktracker
@@ -40,3 +42,20 @@ jobs:
           name: booktracker-debug-apk
           path: booktracker/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      - name: Publish APK to booktracker-apk-latest branch
+        if: success()
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK=$(ls booktracker/app/build/outputs/apk/debug/*.apk | head -1)
+          mkdir /tmp/btapk && cp "$APK" /tmp/btapk/booktracker.apk
+          cd /tmp/btapk
+          git init -q
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git checkout -q -b booktracker-apk-latest
+          git add booktracker.apk
+          git commit -q -m "BookTracker APK build ${GITHUB_SHA}"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" booktracker-apk-latest

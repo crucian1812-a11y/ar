@@ -153,6 +153,12 @@ fun BookCover(book: Book, width: Int, height: Int) {
             contentDescription = book.title,
             modifier = Modifier.size(width.dp, height.dp).clip(shape)
         )
+    } else if (!book.coverUrl.isNullOrBlank()) {
+        AsyncImage(
+            model = book.coverUrl,
+            contentDescription = book.title,
+            modifier = Modifier.size(width.dp, height.dp).clip(shape)
+        )
     } else {
         Box(
             Modifier

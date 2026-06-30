@@ -46,6 +46,13 @@ sealed interface ScanState {
     data class Error(val message: String) : ScanState
 }
 
+sealed interface LookupState {
+    data object Idle : LookupState
+    data object Loading : LookupState
+    data class Found(val info: com.example.booktracker.data.BookInfo) : LookupState
+    data object NotFound : LookupState
+}
+
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo: Repository = (app as BookTrackerApp).repository
@@ -64,6 +71,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _scanState = MutableStateFlow<ScanState>(ScanState.Idle)
     val scanState: StateFlow<ScanState> = _scanState.asStateFlow()
+
+    private val _lookup = MutableStateFlow<LookupState>(LookupState.Idle)
+    val lookup: StateFlow<LookupState> = _lookup.asStateFlow()
+
+    fun lookupBook(query: String) = viewModelScope.launch {
+        if (query.isBlank()) return@launch
+        _lookup.value = LookupState.Loading
+        val info = repo.lookupBookInfo(query)
+        _lookup.value = if (info != null) LookupState.Found(info) else LookupState.NotFound
+    }
+
+    fun resetLookup() { _lookup.value = LookupState.Idle }
 
     fun book(id: Long): Flow<Book?> = repo.book(id)
     fun quotesForBook(id: Long): Flow<List<Quote>> = repo.quotesForBook(id)

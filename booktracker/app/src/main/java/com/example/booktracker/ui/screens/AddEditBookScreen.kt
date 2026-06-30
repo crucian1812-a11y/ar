@@ -22,13 +22,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -77,6 +80,10 @@ fun AddEditBookScreen(
     var rating by remember { mutableStateOf(0) }
     var notes by remember { mutableStateOf("") }
     var coverPath by remember { mutableStateOf<String?>(null) }
+    var coverUrl by remember { mutableStateOf<String?>(null) }
+    var description by remember { mutableStateOf("") }
+    var categories by remember { mutableStateOf("") }
+    var infoLink by remember { mutableStateOf("") }
 
     LaunchedEffect(existing) {
         val b = existing
@@ -88,7 +95,28 @@ fun AddEditBookScreen(
             rating = b.rating
             notes = b.notes
             coverPath = b.coverPath
+            coverUrl = b.coverUrl
+            description = b.description
+            categories = b.categories
+            infoLink = b.infoLink
             loaded = true
+        }
+    }
+
+    val lookup by vm.lookup.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { vm.resetLookup() }
+    LaunchedEffect(lookup) {
+        val st = lookup
+        if (st is com.example.booktracker.ui.LookupState.Found) {
+            val info = st.info
+            if (title.isBlank()) title = info.title
+            if (author.isBlank()) author = info.author
+            if (totalPages.isBlank() && info.pageCount > 0) totalPages = info.pageCount.toString()
+            if (description.isBlank()) description = info.description
+            categories = info.categories
+            infoLink = info.infoLink
+            if (coverPath == null) coverUrl = info.coverUrl
+            vm.resetLookup()
         }
     }
 
@@ -140,6 +168,12 @@ fun AddEditBookScreen(
                                 contentDescription = "Обложка",
                                 modifier = Modifier.size(90.dp, 130.dp).clip(RectangleShape)
                             )
+                        } else if (coverUrl != null) {
+                            AsyncImage(
+                                model = coverUrl,
+                                contentDescription = "Обложка",
+                                modifier = Modifier.size(90.dp, 130.dp).clip(RectangleShape)
+                            )
                         } else {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(Icons.Filled.AddAPhoto, contentDescription = null)
@@ -161,12 +195,46 @@ fun AddEditBookScreen(
                 }
             }
 
+            // auto-pull description, cover and page count from the network
+            val loading = lookup is com.example.booktracker.ui.LookupState.Loading
+            OutlinedButton(
+                onClick = { vm.lookupBook(listOf(title, author).filter { it.isNotBlank() }.joinToString(" ")) },
+                enabled = title.isNotBlank() && !loading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ищем…")
+                } else {
+                    Icon(Icons.Filled.TravelExplore, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Подтянуть из сети")
+                }
+            }
+            if (lookup is com.example.booktracker.ui.LookupState.NotFound) {
+                Text("Ничего не нашлось — заполните вручную.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
+            }
+            if (categories.isNotBlank()) {
+                Text("Тема: $categories",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
             OutlinedTextField(
                 value = totalPages,
                 onValueChange = { v -> totalPages = v.filter { it.isDigit() } },
                 label = { Text("Всего страниц") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(), singleLine = true
+            )
+
+            OutlinedTextField(
+                value = description, onValueChange = { description = it },
+                label = { Text("Описание") },
+                modifier = Modifier.fillMaxWidth().height(140.dp)
             )
 
             Text("Статус", style = MaterialTheme.typography.labelLarge)
@@ -200,7 +268,11 @@ fun AddEditBookScreen(
                         status = status,
                         rating = rating,
                         notes = notes,
-                        coverPath = coverPath
+                        coverPath = coverPath,
+                        coverUrl = coverUrl,
+                        description = description.trim(),
+                        categories = categories.trim(),
+                        infoLink = infoLink.trim()
                     )
                     vm.saveBook(updated) { onDone() }
                 },
