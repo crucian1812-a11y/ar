@@ -198,7 +198,7 @@ fun AddEditBookScreen(
             // auto-pull description, cover and page count from the network
             val loading = lookup is com.example.booktracker.ui.LookupState.Loading
             OutlinedButton(
-                onClick = { vm.lookupBook(listOf(title, author).filter { it.isNotBlank() }.joinToString(" ")) },
+                onClick = { vm.lookupBook(title, author) },
                 enabled = title.isNotBlank() && !loading,
                 modifier = Modifier.fillMaxWidth()
             ) {

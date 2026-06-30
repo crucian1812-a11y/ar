@@ -69,7 +69,8 @@ class Repository(
     suspend fun updateQuote(quote: Quote) = quoteDao.update(quote)
     suspend fun deleteQuote(quote: Quote) = quoteDao.delete(quote)
 
-    suspend fun lookupBookInfo(query: String): BookInfo? = BookInfoService.search(query)
+    suspend fun lookupBookInfo(title: String, author: String): BookInfo? =
+        BookInfoService.search(title, author)
 
     companion object {
         fun from(context: Context): Repository {

@@ -75,10 +75,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _lookup = MutableStateFlow<LookupState>(LookupState.Idle)
     val lookup: StateFlow<LookupState> = _lookup.asStateFlow()
 
-    fun lookupBook(query: String) = viewModelScope.launch {
-        if (query.isBlank()) return@launch
+    fun lookupBook(title: String, author: String = "") = viewModelScope.launch {
+        if (title.isBlank()) return@launch
         _lookup.value = LookupState.Loading
-        val info = repo.lookupBookInfo(query)
+        val info = repo.lookupBookInfo(title, author)
         _lookup.value = if (info != null) LookupState.Found(info) else LookupState.NotFound
     }
 
