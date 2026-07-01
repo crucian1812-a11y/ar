@@ -1,5 +1,7 @@
 package com.example.booktracker.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,18 +12,22 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.booktracker.ui.BackupState
 import com.example.booktracker.ui.MainViewModel
 import com.example.booktracker.ui.components.BarChart
 import com.example.booktracker.ui.components.StatCard
@@ -30,6 +36,16 @@ import com.example.booktracker.ui.components.StatCard
 @Composable
 fun DashboardScreen(vm: MainViewModel) {
     val stats by vm.dashboard.collectAsStateWithLifecycle()
+    val backup by vm.backup.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) { vm.resetBackup() }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> if (uri != null) vm.exportBackup(uri) }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) vm.importBackup(uri) }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Дашборд") }) }) { padding ->
         Column(
@@ -114,6 +130,46 @@ fun DashboardScreen(vm: MainViewModel) {
                     Text("В планах: ${stats.wantToRead}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            SectionCard("Резервная копия") {
+                Text(
+                    "Сохрани все книги, цитаты и заметки в файл JSON — на случай " +
+                        "переустановки или обновления. Файл можно восстановить обратно.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                val working = backup is BackupState.Working
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = { exportLauncher.launch(vm.suggestedBackupName()) },
+                        enabled = !working,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Экспорт") }
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                        enabled = !working,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Импорт") }
+                }
+                when (val st = backup) {
+                    is BackupState.Working -> {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Обработка…", style = MaterialTheme.typography.bodySmall)
+                    }
+                    is BackupState.Done -> {
+                        Spacer(Modifier.height(8.dp))
+                        Text(st.message, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    is BackupState.Error -> {
+                        Spacer(Modifier.height(8.dp))
+                        Text(st.message, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                    else -> {}
                 }
             }
             Spacer(Modifier.height(8.dp))

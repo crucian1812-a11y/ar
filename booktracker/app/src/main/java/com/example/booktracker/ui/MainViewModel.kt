@@ -63,6 +63,13 @@ sealed interface LookupState {
     data object NotFound : LookupState
 }
 
+sealed interface BackupState {
+    data object Idle : BackupState
+    data object Working : BackupState
+    data class Done(val message: String) : BackupState
+    data class Error(val message: String) : BackupState
+}
+
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo: Repository = (app as BookTrackerApp).repository
@@ -93,6 +100,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetLookup() { _lookup.value = LookupState.Idle }
+
+    // ---- Backup / restore (JSON) ----
+
+    private val _backup = MutableStateFlow<BackupState>(BackupState.Idle)
+    val backup: StateFlow<BackupState> = _backup.asStateFlow()
+
+    fun resetBackup() { _backup.value = BackupState.Idle }
+
+    fun suggestedBackupName(): String {
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmm", Locale.US)
+            .format(java.util.Date())
+        return "booktracker-backup-$stamp.json"
+    }
+
+    fun exportBackup(uri: android.net.Uri) = viewModelScope.launch {
+        _backup.value = BackupState.Working
+        val result = runCatching {
+            val json = repo.exportBackupJson()
+            getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                out.write(json.toByteArray(Charsets.UTF_8))
+            } ?: error("Не удалось открыть файл для записи")
+        }
+        _backup.value = result.fold(
+            onSuccess = { BackupState.Done("Резервная копия сохранена") },
+            onFailure = { BackupState.Error(it.message ?: "Ошибка экспорта") }
+        )
+    }
+
+    fun importBackup(uri: android.net.Uri) = viewModelScope.launch {
+        _backup.value = BackupState.Working
+        val result = runCatching {
+            val json = getApplication<Application>().contentResolver.openInputStream(uri)?.use {
+                it.bufferedReader().readText()
+            } ?: error("Не удалось открыть файл")
+            repo.importBackupJson(json)
+        }
+        _backup.value = result.fold(
+            onSuccess = { BackupState.Done("Восстановлено книг: $it") },
+            onFailure = { BackupState.Error(it.message ?: "Ошибка импорта") }
+        )
+    }
 
     fun book(id: Long): Flow<Book?> = repo.book(id)
     fun quotesForBook(id: Long): Flow<List<Quote>> = repo.quotesForBook(id)

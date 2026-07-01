@@ -19,6 +19,9 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE id = :id")
     suspend fun getById(id: Long): Book?
 
+    @Query("SELECT * FROM books")
+    suspend fun getAll(): List<Book>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(book: Book): Long
 
@@ -40,6 +43,9 @@ interface QuoteDao {
     @Query("SELECT COUNT(*) FROM quotes")
     fun observeCount(): Flow<Int>
 
+    @Query("SELECT * FROM quotes")
+    suspend fun getAll(): List<Quote>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(quote: Quote): Long
 
@@ -58,6 +64,9 @@ interface ImpressionDao {
     @Query("SELECT COUNT(*) FROM impressions")
     fun observeCount(): Flow<Int>
 
+    @Query("SELECT * FROM impressions")
+    suspend fun getAll(): List<Impression>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(impression: Impression): Long
 
@@ -70,6 +79,12 @@ interface ReadingLogDao {
     @Query("SELECT * FROM reading_logs ORDER BY dateEpochDay ASC")
     fun observeAll(): Flow<List<ReadingLog>>
 
+    @Query("SELECT * FROM reading_logs")
+    suspend fun getAll(): List<ReadingLog>
+
     @Insert
     suspend fun insert(log: ReadingLog): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(log: ReadingLog): Long
 }

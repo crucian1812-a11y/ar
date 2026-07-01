@@ -78,6 +78,27 @@ class Repository(
     suspend fun lookupBookInfo(title: String, author: String): BookInfo? =
         BookInfoService.search(title, author)
 
+    /** Serializes the whole library to a JSON backup string. */
+    suspend fun exportBackupJson(): String = BackupService.toJson(
+        BackupData(
+            books = bookDao.getAll(),
+            quotes = quoteDao.getAll(),
+            impressions = impressionDao.getAll(),
+            logs = logDao.getAll()
+        )
+    )
+
+    /** Restores from a JSON backup (upsert by id, keeping book↔item links). Returns book count. */
+    suspend fun importBackupJson(json: String): Int {
+        val data = BackupService.parse(json)
+        // Books first so the foreign keys on the other tables resolve.
+        data.books.forEach { bookDao.upsert(it) }
+        data.quotes.forEach { quoteDao.upsert(it) }
+        data.impressions.forEach { impressionDao.upsert(it) }
+        data.logs.forEach { logDao.upsert(it) }
+        return data.books.size
+    }
+
     companion object {
         fun from(context: Context): Repository {
             val db = AppDatabase.get(context)
