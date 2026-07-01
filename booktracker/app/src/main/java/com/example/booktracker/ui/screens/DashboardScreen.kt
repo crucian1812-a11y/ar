@@ -52,11 +52,44 @@ fun DashboardScreen(vm: MainViewModel) {
                     MaterialTheme.colorScheme.surfaceVariant)
             }
 
+            SectionCard("Статистика чтения") {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatCard("${stats.pagesToday}", "Сегодня", Modifier.weight(1f),
+                        MaterialTheme.colorScheme.primaryContainer)
+                    StatCard("${stats.pagesThisWeek}", "За неделю", Modifier.weight(1f),
+                        MaterialTheme.colorScheme.secondaryContainer)
+                    StatCard("${stats.pagesThisMonth}", "За месяц", Modifier.weight(1f),
+                        MaterialTheme.colorScheme.tertiaryContainer)
+                }
+                Spacer(Modifier.height(12.dp))
+                StatLine("Всего прочитано страниц", "${stats.totalPagesRead}")
+                StatLine("В среднем за активный день", "${stats.avgPagesPerActiveDay} стр.")
+                StatLine("Дней с чтением", "${stats.activeDays}")
+                StatLine("Лучший день", stats.bestDay?.let {
+                    "${it.pages} стр. · ${it.date.dayOfMonth}.${it.date.monthValue}"
+                } ?: "—")
+                StatLine("Самая длинная серия", "${stats.longestStreak} дн.")
+                StatLine("Заметок и впечатлений", "${stats.totalImpressions}")
+            }
+
             SectionCard("Страниц за 14 дней") {
                 BarChart(
                     bars = stats.pagesLast14Days.map { it.date.dayOfMonth.toString() to it.pages },
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+
+            if (stats.recentDays.isNotEmpty()) {
+                SectionCard("Страницы по дням") {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        stats.recentDays.forEach { day ->
+                            StatLine(
+                                "${day.date.dayOfMonth}.${day.date.monthValue}.${day.date.year}",
+                                "${day.pages} стр."
+                            )
+                        }
+                    }
+                }
             }
 
             SectionCard("Прочитано книг по месяцам") {
@@ -85,6 +118,18 @@ fun DashboardScreen(vm: MainViewModel) {
             }
             Spacer(Modifier.height(8.dp))
         }
+    }
+}
+
+@Composable
+private fun StatLine(label: String, value: String) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
     }
 }
 

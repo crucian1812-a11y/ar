@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -60,8 +61,10 @@ fun BookDetailScreen(
 ) {
     val bookFlow = remember(bookId) { vm.book(bookId) }
     val quotesFlow = remember(bookId) { vm.quotesForBook(bookId) }
+    val impressionsFlow = remember(bookId) { vm.impressionsForBook(bookId) }
     val book by bookFlow.collectAsStateWithLifecycle(initialValue = null)
     val quotes by quotesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val impressions by impressionsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val b = book
 
     Scaffold(
@@ -156,7 +159,22 @@ fun BookDetailScreen(
                 }
             }
 
+            if (b.music.isNotBlank()) {
+                item { MusicCard(b.music) }
+            }
+
             item { MaterialsSection(b) }
+
+            item {
+                Text("Заметки и впечатления (${impressions.size})",
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
+            item { AddImpression(vm, b) }
+            if (impressions.isNotEmpty()) {
+                items(impressions, key = { it.id }) { imp ->
+                    ImpressionCard(imp, onDelete = { vm.deleteImpression(imp) })
+                }
+            }
 
             item {
                 Text("Цитаты (${quotes.size})",
@@ -223,6 +241,128 @@ private fun MaterialsSection(book: com.example.booktracker.data.Book) {
                         }
                     )
                 }
+            }
+        }
+    }
+}
+
+private fun looksLikeUrl(s: String): Boolean =
+    s.startsWith("http://", true) || s.startsWith("https://", true)
+
+@Composable
+private fun MusicCard(music: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val isUrl = looksLikeUrl(music.trim())
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.MusicNote, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary)
+                Text("Музыка под чтение", style = MaterialTheme.typography.labelLarge)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(music, style = MaterialTheme.typography.bodyMedium)
+            if (isUrl) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(music.trim())
+                            )
+                        )
+                    }
+                }) {
+                    Icon(Icons.Filled.OpenInNew, contentDescription = null,
+                        modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Открыть")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddImpression(vm: MainViewModel, book: com.example.booktracker.data.Book) {
+    var text by remember { mutableStateOf("") }
+    var music by remember { mutableStateOf("") }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            OutlinedTextField(
+                value = text, onValueChange = { text = it },
+                label = { Text("Впечатление или заметка") },
+                modifier = Modifier.fillMaxWidth().height(100.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = music, onValueChange = { music = it },
+                label = { Text("Музыка (необязательно)") },
+                modifier = Modifier.fillMaxWidth(), singleLine = true
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    if (text.isBlank()) return@Button
+                    vm.addImpression(
+                        com.example.booktracker.data.Impression(
+                            bookId = book.id,
+                            text = text.trim(),
+                            music = music.trim(),
+                            page = book.currentPage.takeIf { it > 0 }
+                        )
+                    )
+                    text = ""
+                    music = ""
+                },
+                enabled = text.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Добавить запись") }
+        }
+    }
+}
+
+@Composable
+private fun ImpressionCard(
+    impression: com.example.booktracker.data.Impression,
+    onDelete: () -> Unit
+) {
+    val date = remember(impression.createdAt) {
+        java.text.SimpleDateFormat("d MMM yyyy, HH:mm", java.util.Locale("ru"))
+            .format(java.util.Date(impression.createdAt))
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(date, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Filled.Delete, "Удалить",
+                        tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(impression.text, style = MaterialTheme.typography.bodyMedium)
+            if (impression.music.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Filled.MusicNote, contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary)
+                    Text(impression.music, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            impression.page?.let {
+                Text("стр. $it", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

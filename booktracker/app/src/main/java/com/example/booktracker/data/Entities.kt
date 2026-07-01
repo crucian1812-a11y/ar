@@ -45,6 +45,7 @@ data class Book(
     val startedAt: Long? = null,
     val finishedAt: Long? = null,
     val notes: String = "",
+    val music: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -70,6 +71,29 @@ data class Quote(
     val text: String,
     val page: Int? = null,
     val photoPath: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/** Dated reflection about a book — a reading journal (with the track you read to). */
+@Entity(
+    tableName = "impressions",
+    foreignKeys = [
+        ForeignKey(
+            entity = Book::class,
+            parentColumns = ["id"],
+            childColumns = ["bookId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("bookId")]
+)
+data class Impression(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bookId: Long,
+    val text: String,
+    val music: String = "",
+    val mood: Int = 0,          // optional 1..5
+    val page: Int? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 

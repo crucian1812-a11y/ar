@@ -29,8 +29,18 @@ data class DashboardStats(
     val finished: Int = 0,
     val wantToRead: Int = 0,
     val totalQuotes: Int = 0,
+    val totalImpressions: Int = 0,
     val currentStreak: Int = 0,
+    val longestStreak: Int = 0,
+    val totalPagesRead: Int = 0,
+    val pagesToday: Int = 0,
+    val pagesThisWeek: Int = 0,
+    val pagesThisMonth: Int = 0,
+    val avgPagesPerActiveDay: Int = 0,
+    val activeDays: Int = 0,
+    val bestDay: DayPages? = null,
     val pagesLast14Days: List<DayPages> = emptyList(),
+    val recentDays: List<DayPages> = emptyList(),
     val finishedByMonth: List<MonthCount> = emptyList(),
     val ratingDistribution: List<Int> = List(5) { 0 }
 )
@@ -65,8 +75,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         repo.quotes.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val dashboard: StateFlow<DashboardStats> =
-        combine(repo.books, repo.logs, repo.quoteCount) { books, logs, quoteCount ->
-            buildStats(books, logs, quoteCount)
+        combine(repo.books, repo.logs, repo.quoteCount, repo.impressionCount) { books, logs, quoteCount, imprCount ->
+            buildStats(books, logs, quoteCount, imprCount)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardStats())
 
     private val _scanState = MutableStateFlow<ScanState>(ScanState.Idle)
@@ -86,6 +96,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun book(id: Long): Flow<Book?> = repo.book(id)
     fun quotesForBook(id: Long): Flow<List<Quote>> = repo.quotesForBook(id)
+    fun impressionsForBook(id: Long): Flow<List<com.example.booktracker.data.Impression>> =
+        repo.impressionsForBook(id)
+
+    fun addImpression(impression: com.example.booktracker.data.Impression, onDone: () -> Unit = {}) =
+        viewModelScope.launch {
+            repo.addImpression(impression)
+            onDone()
+        }
+
+    fun deleteImpression(impression: com.example.booktracker.data.Impression) =
+        viewModelScope.launch { repo.deleteImpression(impression) }
 
     fun saveBook(book: Book, onSaved: (Long) -> Unit = {}) = viewModelScope.launch {
         onSaved(repo.saveBook(book))
@@ -155,9 +176,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun buildStats(
         books: List<Book>,
         logs: List<ReadingLog>,
-        quoteCount: Int
+        quoteCount: Int,
+        impressionCount: Int
     ): DashboardStats {
         val today = LocalDate.now()
+        val todayEpoch = today.toEpochDay()
 
         val pagesByDay = logs.groupBy { it.dateEpochDay }
             .mapValues { (_, list) -> list.sumOf { it.pages } }
@@ -165,6 +188,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val date = today.minusDays(offset.toLong())
             DayPages(date, pagesByDay[date.toEpochDay()] ?: 0)
         }
+        // A longer daily breakdown for detailed page-per-day tracking (newest first, only active days).
+        val recentDays = pagesByDay.entries
+            .filter { it.value > 0 }
+            .sortedByDescending { it.key }
+            .take(30)
+            .map { DayPages(LocalDate.ofEpochDay(it.key), it.value) }
+
+        val totalPagesRead = logs.sumOf { it.pages }
+        val activeDays = pagesByDay.count { it.value > 0 }
+        val pagesToday = pagesByDay[todayEpoch] ?: 0
+        val pagesThisWeek = (0 until 7).sumOf { pagesByDay[todayEpoch - it] ?: 0 }
+        val pagesThisMonth = (0 until 30).sumOf { pagesByDay[todayEpoch - it] ?: 0 }
+        val avgPerActiveDay = if (activeDays > 0) totalPagesRead / activeDays else 0
+        val bestDay = pagesByDay.filter { it.value > 0 }.maxByOrNull { it.value }
+            ?.let { DayPages(LocalDate.ofEpochDay(it.key), it.value) }
 
         val finishedBooks = books.filter { it.status == ReadingStatus.FINISHED && it.finishedAt != null }
         val byMonth = (5 downTo 0).map { offset ->
@@ -180,17 +218,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val ratingDist = MutableList(5) { 0 }
         books.filter { it.rating in 1..5 }.forEach { ratingDist[it.rating - 1]++ }
 
+        val activeDaySet = pagesByDay.filter { it.value > 0 }.keys
+
         return DashboardStats(
             totalBooks = books.size,
             reading = books.count { it.status == ReadingStatus.READING },
             finished = books.count { it.status == ReadingStatus.FINISHED },
             wantToRead = books.count { it.status == ReadingStatus.WANT_TO_READ },
             totalQuotes = quoteCount,
-            currentStreak = computeStreak(pagesByDay.keys),
+            totalImpressions = impressionCount,
+            currentStreak = computeStreak(activeDaySet),
+            longestStreak = computeLongestStreak(activeDaySet),
+            totalPagesRead = totalPagesRead,
+            pagesToday = pagesToday,
+            pagesThisWeek = pagesThisWeek,
+            pagesThisMonth = pagesThisMonth,
+            avgPagesPerActiveDay = avgPerActiveDay,
+            activeDays = activeDays,
+            bestDay = bestDay,
             pagesLast14Days = last14,
+            recentDays = recentDays,
             finishedByMonth = byMonth,
             ratingDistribution = ratingDist
         )
+    }
+
+    private fun computeLongestStreak(daysWithReading: Set<Long>): Int {
+        if (daysWithReading.isEmpty()) return 0
+        val sorted = daysWithReading.sorted()
+        var best = 1
+        var run = 1
+        for (i in 1 until sorted.size) {
+            run = if (sorted[i] == sorted[i - 1] + 1) run + 1 else 1
+            if (run > best) best = run
+        }
+        return best
     }
 
     private fun computeStreak(daysWithReading: Set<Long>): Int {

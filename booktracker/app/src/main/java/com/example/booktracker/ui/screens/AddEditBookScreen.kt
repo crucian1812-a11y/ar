@@ -79,6 +79,7 @@ fun AddEditBookScreen(
     var status by remember { mutableStateOf(ReadingStatus.WANT_TO_READ) }
     var rating by remember { mutableStateOf(0) }
     var notes by remember { mutableStateOf("") }
+    var music by remember { mutableStateOf("") }
     var coverPath by remember { mutableStateOf<String?>(null) }
     var coverUrl by remember { mutableStateOf<String?>(null) }
     var description by remember { mutableStateOf("") }
@@ -94,6 +95,7 @@ fun AddEditBookScreen(
             status = b.status
             rating = b.rating
             notes = b.notes
+            music = b.music
             coverPath = b.coverPath
             coverUrl = b.coverUrl
             description = b.description
@@ -257,6 +259,13 @@ fun AddEditBookScreen(
                 modifier = Modifier.fillMaxWidth().height(120.dp)
             )
 
+            OutlinedTextField(
+                value = music, onValueChange = { music = it },
+                label = { Text("Музыка под чтение") },
+                placeholder = { Text("Исполнитель, альбом или ссылка") },
+                modifier = Modifier.fillMaxWidth(), singleLine = true
+            )
+
             Button(
                 onClick = {
                     if (title.isBlank()) return@Button
@@ -268,6 +277,7 @@ fun AddEditBookScreen(
                         status = status,
                         rating = rating,
                         notes = notes,
+                        music = music.trim(),
                         coverPath = coverPath,
                         coverUrl = coverUrl,
                         description = description.trim(),

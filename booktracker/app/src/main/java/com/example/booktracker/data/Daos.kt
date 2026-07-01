@@ -51,6 +51,21 @@ interface QuoteDao {
 }
 
 @Dao
+interface ImpressionDao {
+    @Query("SELECT * FROM impressions WHERE bookId = :bookId ORDER BY createdAt DESC")
+    fun observeForBook(bookId: Long): Flow<List<Impression>>
+
+    @Query("SELECT COUNT(*) FROM impressions")
+    fun observeCount(): Flow<Int>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(impression: Impression): Long
+
+    @Delete
+    suspend fun delete(impression: Impression)
+}
+
+@Dao
 interface ReadingLogDao {
     @Query("SELECT * FROM reading_logs ORDER BY dateEpochDay ASC")
     fun observeAll(): Flow<List<ReadingLog>>

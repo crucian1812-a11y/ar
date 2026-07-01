@@ -8,15 +8,18 @@ import java.time.ZoneId
 class Repository(
     private val bookDao: BookDao,
     private val quoteDao: QuoteDao,
+    private val impressionDao: ImpressionDao,
     private val logDao: ReadingLogDao
 ) {
     val books: Flow<List<Book>> = bookDao.observeAll()
     val quotes: Flow<List<Quote>> = quoteDao.observeAll()
     val quoteCount: Flow<Int> = quoteDao.observeCount()
+    val impressionCount: Flow<Int> = impressionDao.observeCount()
     val logs: Flow<List<ReadingLog>> = logDao.observeAll()
 
     fun book(id: Long): Flow<Book?> = bookDao.observeById(id)
     fun quotesForBook(bookId: Long): Flow<List<Quote>> = quoteDao.observeForBook(bookId)
+    fun impressionsForBook(bookId: Long): Flow<List<Impression>> = impressionDao.observeForBook(bookId)
 
     suspend fun getBook(id: Long): Book? = bookDao.getById(id)
 
@@ -69,13 +72,16 @@ class Repository(
     suspend fun updateQuote(quote: Quote) = quoteDao.update(quote)
     suspend fun deleteQuote(quote: Quote) = quoteDao.delete(quote)
 
+    suspend fun addImpression(impression: Impression): Long = impressionDao.upsert(impression)
+    suspend fun deleteImpression(impression: Impression) = impressionDao.delete(impression)
+
     suspend fun lookupBookInfo(title: String, author: String): BookInfo? =
         BookInfoService.search(title, author)
 
     companion object {
         fun from(context: Context): Repository {
             val db = AppDatabase.get(context)
-            return Repository(db.bookDao(), db.quoteDao(), db.readingLogDao())
+            return Repository(db.bookDao(), db.quoteDao(), db.impressionDao(), db.readingLogDao())
         }
 
         fun epochDayToDate(day: Long): LocalDate = LocalDate.ofEpochDay(day)
