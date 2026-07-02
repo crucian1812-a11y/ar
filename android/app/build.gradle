@@ -1,0 +1,36 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.crucian.bjjarena'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.crucian.bjjarena'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// игры лежат в корне репозитория — копируем их в assets при каждой сборке
+tasks.register('copyGames', Copy) {
+    from(rootProject.projectDir.parentFile) {
+        include 'bjj.html', 'bjj3d.html', 'bjjpro.html', 'three.min.js'
+    }
+    into layout.projectDirectory.dir('src/main/assets')
+}
+preBuild.dependsOn copyGames

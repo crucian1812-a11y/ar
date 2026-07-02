@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Пояс с узлом — символ BJJ -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- лента пояса -->
+    <path
+        android:fillColor="#FFD54A"
+        android:pathData="M20,49 h68 v10 h-68 z" />
+    <!-- узел -->
+    <path
+        android:fillColor="#F0A500"
+        android:pathData="M47,46 h14 v16 h-14 z" />
+    <!-- концы пояса -->
+    <path
+        android:fillColor="#FFD54A"
+        android:pathData="M49,62 l-6,20 h8 l4,-18 z" />
+    <path
+        android:fillColor="#FFD54A"
+        android:pathData="M59,62 l6,20 h-8 l-4,-18 z" />
+</vector>

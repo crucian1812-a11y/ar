@@ -1,0 +1,9 @@
+.gradle/
+build/
+app/build/
+local.properties
+# игры копируются из корня репозитория при сборке (задача copyGames)
+app/src/main/assets/bjj.html
+app/src/main/assets/bjj3d.html
+app/src/main/assets/bjjpro.html
+app/src/main/assets/three.min.js

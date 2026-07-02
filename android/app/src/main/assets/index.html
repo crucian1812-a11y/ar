@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>BJJ Arena</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; background:#0e1420; color:#e8edf5;
+    font-family:'Segoe UI', Roboto, Arial, sans-serif; user-select:none; }
+  body { display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px; gap:14px; }
+  h1 { font-size:34px; letter-spacing:1px; margin-bottom:2px; }
+  h1 span { color:#ffd54a; }
+  .sub { opacity:.7; font-size:13px; margin-bottom:20px; text-align:center; }
+  a.card { display:block; width:100%; max-width:420px; text-decoration:none; color:#e8edf5;
+    border:2px solid #33415c; background:#141c2c; border-radius:16px; padding:18px 20px; }
+  a.card:active { transform:scale(.98); }
+  a.card b { font-size:18px; display:block; margin-bottom:4px; }
+  a.card small { opacity:.7; font-size:12px; line-height:1.4; display:block; }
+  a.card.hot { border-color:#ffd54a; background:#221d0e; }
+  .tag { display:inline-block; font-size:10px; font-weight:800; letter-spacing:1px;
+    background:#ffd54a; color:#0e1420; border-radius:8px; padding:2px 8px; margin-bottom:6px; }
+</style>
+</head>
+<body>
+  <h1>BJJ <span>Arena</span></h1>
+  <div class="sub">Бразильское джиу-джитсу · выбери версию игры</div>
+
+  <a class="card hot" href="bjjpro.html">
+    <span class="tag">НОВОЕ</span>
+    <b>🏟 Ночь Чемпионов (3D-арена)</b>
+    <small>Но-ги грэпплинг: мускулистые бойцы, тёмная арена, толпа, прожекторы</small>
+  </a>
+
+  <a class="card" href="bjj3d.html">
+    <b>🥋 Царь Татами 3D (додзё)</b>
+    <small>Классика в кимоно: зал-додзё, татами, пояса по уровню сложности</small>
+  </a>
+
+  <a class="card" href="bjj.html">
+    <b>🗺 Царь Татами 2D</b>
+    <small>Лёгкая 2D-версия — вид сверху, летает даже на слабых телефонах</small>
+  </a>
+</body>
+</html>
