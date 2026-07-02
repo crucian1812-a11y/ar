@@ -7,3 +7,7 @@ app/src/main/assets/bjj.html
 app/src/main/assets/bjj3d.html
 app/src/main/assets/bjjpro.html
 app/src/main/assets/three.min.js
+app/src/main/assets/bjjreal.html
+app/src/main/assets/GLTFLoader.js
+app/src/main/assets/SkeletonUtils.js
+app/src/main/assets/Soldier.glb

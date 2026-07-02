@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0e1420">
+<title>BJJ Arena PRO: реальные модели</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; background:#0e1420; color:#e8edf5;
+    font-family:'Segoe UI', Roboto, Arial, sans-serif; touch-action:manipulation;
+    user-select:none; -webkit-user-select:none; }
+  #app { height:100%; display:flex; flex-direction:column; max-width:560px; margin:0 auto; position:relative; }
+
+  /* ── Табло ── */
+  #scoreboard { display:flex; align-items:stretch; gap:6px; padding:8px 10px 4px; }
+  .corner { flex:1; border-radius:10px; padding:6px 10px; position:relative; overflow:hidden; }
+  .corner.you { background:linear-gradient(135deg,#123a6e,#1b56a0); text-align:left; }
+  .corner.foe { background:linear-gradient(225deg,#5c5c66,#3a3a42); text-align:right; }
+  .corner .name { font-size:11px; opacity:.85; letter-spacing:.5px; }
+  .corner .pts  { font-size:26px; font-weight:800; line-height:1.1; }
+  .corner .adv  { font-size:10px; opacity:.8; }
+  #clockbox { min-width:86px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:#080c14; border-radius:10px; padding:4px 8px; }
+  #clock { font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; color:#ffd54a; }
+  #roundlbl { font-size:10px; opacity:.75; letter-spacing:1px; }
+
+  /* ── Стамина ── */
+  #staminarow { display:flex; gap:6px; padding:4px 10px; }
+  .stambar { flex:1; height:10px; background:#1a2233; border-radius:5px; overflow:hidden; }
+  .stambar > div { height:100%; border-radius:5px; transition:width .25s; }
+  #stamYou > div { background:linear-gradient(90deg,#2f80ed,#56ccf2); width:100%; }
+  #stamFoe > div { background:linear-gradient(270deg,#eb5757,#f2994a); width:100%; float:right; }
+
+  /* ── 3D-сцена ── */
+  #matwrap { flex:1; position:relative; margin:6px 10px; min-height:0; border-radius:14px; overflow:hidden; }
+  #matwrap canvas { width:100%; height:100%; display:block; }
+  #posLabel { position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(8,12,20,.78); padding:4px 14px; border-radius:20px;
+    font-size:13px; font-weight:700; letter-spacing:.5px; white-space:nowrap; z-index:5; }
+  #posLabel .side { font-size:10px; font-weight:600; opacity:.85; display:block; text-align:center; }
+  #log { position:absolute; bottom:8px; left:8px; right:8px; text-align:center;
+    font-size:12px; min-height:16px; color:#cfe3ff; text-shadow:0 1px 3px #000;
+    pointer-events:none; z-index:5; }
+
+  /* ── Кнопки действий ── */
+  #actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:8px 10px calc(12px + env(safe-area-inset-bottom)); }
+  .abtn { border:none; border-radius:12px; padding:13px 8px; font-size:14px; font-weight:700;
+    color:#fff; background:linear-gradient(135deg,#1e4976,#2a6db1); cursor:pointer;
+    box-shadow:0 3px 0 rgba(0,0,0,.35); transition:transform .05s, opacity .2s; }
+  .abtn:active { transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,.35); }
+  .abtn.sub   { background:linear-gradient(135deg,#7a1f3d,#c0392b); }
+  .abtn.def   { background:linear-gradient(135deg,#2d6a4f,#40916c); }
+  .abtn.rest  { background:linear-gradient(135deg,#4a4e69,#6c6f85); }
+  .abtn:disabled { opacity:.38; transform:none; }
+  .abtn small { display:block; font-weight:400; font-size:10px; opacity:.8; margin-top:2px; }
+
+  /* ── Оверлеи ── */
+  .overlay { position:absolute; inset:0; background:rgba(8,12,20,.92); z-index:20;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px; text-align:center; }
+  .overlay.seethrough { background:rgba(8,12,20,.55); }
+  .hidden { display:none !important; }
+  h1 { font-size:30px; margin-bottom:4px; letter-spacing:1px; }
+  h1 .accent { color:#ffd54a; }
+  .subtitle { opacity:.7; font-size:13px; margin-bottom:24px; }
+  .choice-title { font-size:12px; letter-spacing:1.5px; opacity:.65; margin:14px 0 8px; text-transform:uppercase; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  .chip { border:2px solid #33415c; background:#141c2c; color:#e8edf5; border-radius:12px;
+    padding:10px 16px; font-size:14px; font-weight:700; cursor:pointer; }
+  .chip small { display:block; font-weight:400; font-size:10px; opacity:.7; }
+  .chip.sel { border-color:#ffd54a; background:#2a2410; }
+  .bigbtn { margin-top:26px; border:none; border-radius:14px; padding:16px 46px; font-size:18px;
+    font-weight:800; color:#0e1420; background:linear-gradient(135deg,#ffd54a,#f0a500);
+    cursor:pointer; box-shadow:0 4px 0 #8a6100; letter-spacing:1px; }
+  .bigbtn:active { transform:translateY(3px); box-shadow:0 1px 0 #8a6100; }
+
+  /* ── QTE ── */
+  #qte .qte-name { font-size:22px; font-weight:800; margin-bottom:18px; text-shadow:0 2px 8px #000; }
+  #qteTrack { width:min(86vw,420px); height:34px; background:#1a2233; border-radius:17px;
+    position:relative; overflow:hidden; }
+  #qteZone { position:absolute; top:0; bottom:0; background:rgba(64,145,108,.85); }
+  #qteMark { position:absolute; top:-3px; bottom:-3px; width:6px; background:#ffd54a;
+    border-radius:3px; box-shadow:0 0 8px #ffd54a; }
+  #qteHint { margin-top:14px; font-size:13px; opacity:.85; text-shadow:0 1px 4px #000; }
+  #qteBtn { margin-top:22px; }
+
+  /* ── Борьба (тап-баттл) ── */
+  #struggle .st-name { font-size:22px; font-weight:800; margin-bottom:6px; text-shadow:0 2px 8px #000; }
+  #struggle .st-sub { font-size:13px; opacity:.85; margin-bottom:18px; text-shadow:0 1px 4px #000; }
+  #stTrack { width:min(86vw,420px); height:26px; background:#3d1220; border-radius:13px; overflow:hidden; }
+  #stFill { height:100%; width:50%; background:linear-gradient(90deg,#40916c,#74c69d); transition:width .08s linear; }
+  #stTimer { margin-top:10px; font-size:13px; color:#ffd54a; font-variant-numeric:tabular-nums; }
+  #stBtn { margin-top:20px; padding:26px 60px; font-size:22px; border-radius:50px; }
+
+  .resultTitle { font-size:34px; font-weight:900; margin-bottom:8px; }
+  .resultTitle.win  { color:#74c69d; }
+  .resultTitle.lose { color:#eb5757; }
+  .resultTitle.draw { color:#ffd54a; }
+  .resultDetail { font-size:15px; opacity:.85; line-height:1.6; margin-bottom:6px; }
+
+  #flash { position:absolute; inset:0; pointer-events:none; z-index:15; opacity:0; border-radius:14px; }
+  /* кинематографичная виньетка поверх 3D */
+  #matwrap::after { content:''; position:absolute; inset:0; pointer-events:none; z-index:4;
+    background:radial-gradient(ellipse at 50% 42%, transparent 50%, rgba(0,0,0,.6) 100%);
+    border-radius:14px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="scoreboard">
+    <div class="corner you">
+      <div class="name">ВЫ · СИНИЙ УГОЛ</div>
+      <div class="pts" id="ptsYou">0</div>
+      <div class="adv" id="advYou">Преим.: 0</div>
+    </div>
+    <div id="clockbox">
+      <div id="clock">2:00</div>
+      <div id="roundlbl">РАУНД 1/3</div>
+    </div>
+    <div class="corner foe">
+      <div class="name" id="foeName">СОПЕРНИК</div>
+      <div class="pts" id="ptsFoe">0</div>
+      <div class="adv" id="advFoe">Преим.: 0</div>
+    </div>
+  </div>
+
+  <div id="staminarow">
+    <div class="stambar" id="stamYou"><div></div></div>
+    <div class="stambar" id="stamFoe"><div></div></div>
+  </div>
+
+  <div id="matwrap">
+    <div id="posLabel">Стойка<span class="side"></span></div>
+    <div id="log"></div>
+    <div id="flash"></div>
+  </div>
+
+  <div id="actions"></div>
+
+  <!-- ═══ МЕНЮ ═══ -->
+  <div class="overlay" id="menu">
+    <h1>BJJ <span class="accent">Arena</span> PRO</h1>
+    <div class="subtitle">Реальные 3D-модели бойцов · грэпплинг на большой арене</div>
+
+    <div class="choice-title">Сложность соперника</div>
+    <div class="chips" id="diffChips">
+      <button class="chip sel" data-v="0">⬜ Белый пояс<small>новичок</small></button>
+      <button class="chip" data-v="1">🟪 Пурпурный<small>опытный</small></button>
+      <button class="chip" data-v="2">⬛ Чёрный пояс<small>мастер</small></button>
+    </div>
+
+    <div class="choice-title">Раунды</div>
+    <div class="chips" id="roundChips">
+      <button class="chip" data-v="1">1</button>
+      <button class="chip sel" data-v="3">3</button>
+      <button class="chip" data-v="5">5</button>
+    </div>
+
+    <div class="choice-title">Длительность раунда</div>
+    <div class="chips" id="timeChips">
+      <button class="chip" data-v="60">1:00</button>
+      <button class="chip sel" data-v="90">1:30</button>
+      <button class="chip" data-v="120">2:00</button>
+    </div>
+
+    <button class="bigbtn" id="btnStart" disabled>ЗАГРУЗКА БОЙЦОВ…</button>
+    <div class="subtitle" style="margin-top:18px">Побеждай по очкам (тейкдаун 2 · свип 2 · проход 3 · маунт 4 · спина 4)<br>или финишируй болевым/удушающим. Осс! 🥋</div>
+  </div>
+
+  <!-- ═══ QTE ═══ -->
+  <div class="overlay seethrough hidden" id="qte">
+    <div class="qte-name" id="qteName">Тейкдаун</div>
+    <div id="qteTrack"><div id="qteZone"></div><div id="qteMark"></div></div>
+    <div id="qteHint">Жми СТОП, когда маркер в зелёной зоне!</div>
+    <button class="bigbtn" id="qteBtn">СТОП!</button>
+  </div>
+
+  <!-- ═══ Борьба ═══ -->
+  <div class="overlay seethrough hidden" id="struggle">
+    <div class="st-name" id="stName">ДОЖИМАЙ!</div>
+    <div class="st-sub" id="stSub">Тапай изо всех сил!</div>
+    <div id="stTrack"><div id="stFill"></div></div>
+    <div id="stTimer">6.0</div>
+    <button class="bigbtn" id="stBtn">ТАП!</button>
+  </div>
+
+  <!-- ═══ Отдых между раундами ═══ -->
+  <div class="overlay hidden" id="rest">
+    <div class="resultTitle draw" id="restTitle">Конец раунда</div>
+    <div class="resultDetail" id="restDetail"></div>
+    <button class="bigbtn" id="btnNextRound">СЛЕДУЮЩИЙ РАУНД</button>
+  </div>
+
+  <!-- ═══ Финал ═══ -->
+  <div class="overlay hidden" id="end">
+    <div class="resultTitle" id="endTitle">ПОБЕДА!</div>
+    <div class="resultDetail" id="endDetail"></div>
+    <button class="bigbtn" id="btnAgain">ЕЩЁ БОЙ</button>
+    <button class="bigbtn" id="btnMenu" style="background:linear-gradient(135deg,#6c6f85,#4a4e69); box-shadow:0 4px 0 #2c2e3d; color:#fff; margin-top:12px;">В МЕНЮ</button>
+  </div>
+
+</div>
+
+<script src="three.min.js"></script>
+<script src="GLTFLoader.js"></script>
+<script src="SkeletonUtils.js"></script>
+<script>
+'use strict';
+/* ═══════════════════════════ УТИЛИТЫ ═══════════════════════════ */
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const rnd = (a,b) => a + Math.random()*(b-a);
+
+let actx = null;
+function beep(freq, dur=0.08, type='square', vol=0.12) {
+  try {
+    if (!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  } catch(e){}
+}
+const sndOk   = () => { beep(660,.07); setTimeout(()=>beep(880,.1),70); };
+const sndFail = () => beep(160,.18,'sawtooth');
+const sndTap  = () => beep(440,.03,'square',.06);
+const sndBell = () => { beep(1200,.4,'sine',.2); setTimeout(()=>beep(900,.5,'sine',.15),120); };
+const sndSub  = () => { beep(523,.1); setTimeout(()=>beep(659,.1),100); setTimeout(()=>beep(784,.25),200); };
+
+/* ═══════════════════════════ СЛОЖНОСТЬ ═══════════════════════════ */
+const DIFFS = [
+  { name:'БЕЛЫЙ ПОЯС',    belt:0xf5f5f5, hair:'brown', aiMin:6.0, aiMax:9.0, aiChance:0.70, zone:0.34, speed:0.90, drain:14, tap:6.0, defStart:55, atkStart:55, aiRegen:2.2 },
+  { name:'ПУРПУРНЫЙ ПОЯС',belt:0x8e44ad, hair:'blond', aiMin:4.5, aiMax:7.0, aiChance:1.00, zone:0.26, speed:1.15, drain:20, tap:5.0, defStart:48, atkStart:50, aiRegen:3.0 },
+  { name:'ЧЁРНЫЙ ПОЯС',   belt:0x141414, hair:'bald',  aiMin:3.0, aiMax:5.0, aiChance:1.30, zone:0.19, speed:1.40, drain:27, tap:4.2, defStart:40, atkStart:45, aiRegen:3.8 },
+];
+
+/* ═══════════════════════════ ПОЗИЦИИ / ДЕЙСТВИЯ ═══════════════════════════ */
+const POSITIONS = {
+  standing:     { label:'Стойка',            side:'нейтрально' },
+  guard_top:    { label:'Гвард соперника',   side:'вы сверху' },
+  guard_bottom: { label:'Ваш гвард',         side:'вы снизу' },
+  side_top:     { label:'Боковой контроль',  side:'вы сверху' },
+  side_bottom:  { label:'Боковой контроль',  side:'вы снизу' },
+  mount_top:    { label:'Маунт',             side:'вы сверху' },
+  mount_bottom: { label:'Маунт соперника',   side:'вы снизу' },
+  back_top:     { label:'Спина взята!',      side:'вы контролируете' },
+  back_bottom:  { label:'Соперник на спине', side:'опасно!' },
+};
+
+const PLAYER_ACTIONS = {
+  standing: [
+    { id:'td',   name:'Тейкдаун', hint:'проход в ноги · +2', chance:.60, cost:18, pts:2, to:'guard_top' },
+    { id:'pull', name:'Затянуть в гвард', hint:'без очков', chance:.92, cost:8,  pts:0, to:'guard_bottom' },
+  ],
+  guard_top: [
+    { id:'passK', name:'Проход через колено', hint:'+3', chance:.55, cost:18, pts:3, to:'side_top' },
+    { id:'passS', name:'Стек-проход', hint:'мощно · +3', chance:.45, cost:24, pts:3, to:'side_top' },
+  ],
+  guard_bottom: [
+    { id:'sweepS', name:'Свип-ножницы', hint:'+2, вы сверху', chance:.55, cost:18, pts:2, to:'guard_top' },
+    { id:'sweepF', name:'Флауэр-свип', hint:'риск · +2 и маунт!', chance:.38, cost:24, pts:2, to:'mount_top' },
+    { id:'tri',    name:'Треугольник', hint:'удушающий', chance:.48, cost:22, sub:'треугольником', cls:'sub' },
+    { id:'arm',    name:'Армбар', hint:'болевой на руку', chance:.44, cost:22, sub:'армбаром', cls:'sub' },
+  ],
+  side_top: [
+    { id:'mnt', name:'Выход в маунт', hint:'+4', chance:.55, cost:18, pts:4, to:'mount_top' },
+    { id:'kim', name:'Кимура', hint:'болевой на плечо', chance:.48, cost:20, sub:'кимурой', cls:'sub' },
+  ],
+  side_bottom: [
+    { id:'rec', name:'Вернуть гвард', hint:'закрыть ноги', chance:.60, cost:15, pts:0, to:'guard_bottom' },
+    { id:'brg', name:'Мост и выход', hint:'в стойку', chance:.42, cost:20, pts:0, to:'standing' },
+  ],
+  mount_top: [
+    { id:'armM', name:'Армбар', hint:'болевой', chance:.52, cost:20, sub:'армбаром', cls:'sub' },
+    { id:'chk',  name:'Крест', hint:'удушающий воротом', chance:.48, cost:20, sub:'удушением "крест"', cls:'sub' },
+    { id:'back', name:'Забрать спину', hint:'+4', chance:.48, cost:15, pts:4, to:'back_top' },
+  ],
+  mount_bottom: [
+    { id:'upa', name:'Упа (переворот)', hint:'мост — вы сверху!', chance:.48, cost:22, pts:0, to:'guard_top' },
+    { id:'elb', name:'Локти-колени', hint:'вернуть гвард', chance:.58, cost:15, pts:0, to:'guard_bottom' },
+  ],
+  back_top: [
+    { id:'rnc',  name:'Мата-леон', hint:'удушающий сзади', chance:.58, cost:20, sub:'мата-леоном', cls:'sub' },
+    { id:'hold', name:'Держать крюки', hint:'+выносливость', chance:1, cost:0, restore:22, cls:'rest' },
+  ],
+  back_bottom: [
+    { id:'strip', name:'Снять крюки', hint:'уйти в гвард', chance:.48, cost:18, pts:0, to:'guard_bottom' },
+    { id:'wall',  name:'Защита шеи', hint:'+выносливость', chance:1, cost:0, restore:16, cls:'rest' },
+  ],
+};
+
+const AI_ACTIONS = {
+  standing: [
+    { w:5, name:'тейкдаун', chance:.42, pts:2, to:'guard_bottom', msg:'Соперник прошёл в ноги — тейкдаун!' },
+    { w:2, name:'затягивание', chance:.80, pts:0, to:'guard_top', msg:'Соперник затянул вас в свой гвард.' },
+  ],
+  guard_top: [
+    { w:4, name:'свип', chance:.40, pts:2, to:'guard_bottom', msg:'Соперник сделал свип — вы снизу!' },
+    { w:3, name:'треугольник', chance:.38, sub:'треугольник', msg:'Соперник ловит треугольник!' },
+  ],
+  guard_bottom: [
+    { w:5, name:'проход гварда', chance:.42, pts:3, to:'side_bottom', msg:'Соперник прошёл ваш гвард! +3' },
+  ],
+  side_top: [
+    { w:4, name:'возврат гварда', chance:.45, pts:0, to:'guard_top', msg:'Соперник вернул гвард.' },
+    { w:2, name:'уход в стойку', chance:.35, pts:0, to:'standing', msg:'Соперник вскочил в стойку.' },
+  ],
+  side_bottom: [
+    { w:4, name:'выход в маунт', chance:.40, pts:4, to:'mount_bottom', msg:'Соперник вышел в маунт! +4' },
+    { w:3, name:'кимура', chance:.36, sub:'кимуру', msg:'Соперник крутит кимуру!' },
+  ],
+  mount_top: [
+    { w:4, name:'упа', chance:.40, pts:0, to:'guard_bottom', msg:'Соперник перевернул вас мостом!' },
+    { w:3, name:'локти-колени', chance:.45, pts:0, to:'guard_top', msg:'Соперник вернул гвард.' },
+  ],
+  mount_bottom: [
+    { w:4, name:'армбар', chance:.42, sub:'армбар', msg:'Соперник выходит на армбар!' },
+    { w:4, name:'удушение', chance:.42, sub:'удушение', msg:'Соперник давит удушающий!' },
+  ],
+  back_top: [
+    { w:4, name:'выход со спины', chance:.38, pts:0, to:'side_top', msg:'Соперник слез со спины, но вы удержали контроль сверху.' },
+  ],
+  back_bottom: [
+    { w:5, name:'мата-леон', chance:.50, sub:'мата-леон', msg:'Соперник затягивает мата-леон!!' },
+  ],
+};
+
+/* ═══════════════════════════ СОСТОЯНИЕ ИГРЫ ═══════════════════════════ */
+const G = {
+  screen:'menu',
+  diff:0, totalRounds:3, roundTime:90,
+  round:1, clock:90,
+  pos:'standing',
+  ptsYou:0, ptsFoe:0, advYou:0, advFoe:0,
+  stamYou:100, stamFoe:100,
+  defUntil:0, defCooldown:0,
+  aiTimer:5,
+  time:0,
+};
+let qteState = null;
+let stState = null;
+let camShake = 0;
+
+/* ═══════════════════════════ HUD ═══════════════════════════ */
+function setLog(msg, color) {
+  const el = $('log');
+  el.textContent = msg;
+  el.style.color = color || '#cfe3ff';
+}
+function flash(color) {
+  const f = $('flash');
+  f.style.background = color;
+  f.style.transition = 'none'; f.style.opacity = .45;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    f.style.transition = 'opacity .5s'; f.style.opacity = 0;
+  }));
+}
+function fmtClock(s) {
+  s = Math.max(0, Math.ceil(s));
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}
+function updateHUD() {
+  $('ptsYou').textContent = G.ptsYou;
+  $('ptsFoe').textContent = G.ptsFoe;
+  $('advYou').textContent = 'Преим.: ' + G.advYou;
+  $('advFoe').textContent = 'Преим.: ' + G.advFoe;
+  $('clock').textContent = fmtClock(G.clock);
+  $('roundlbl').textContent = 'РАУНД ' + G.round + '/' + G.totalRounds;
+  $('stamYou').firstElementChild.style.width = G.stamYou + '%';
+  $('stamFoe').firstElementChild.style.width = G.stamFoe + '%';
+  const p = POSITIONS[G.pos];
+  $('posLabel').innerHTML = p.label + '<span class="side">' + p.side + '</span>';
+}
+
+let actionButtons = [];
+let renderedPos = null;
+function renderActions(force) {
+  if (!force && renderedPos === G.pos) { updateActionButtons(); return; }
+  renderedPos = G.pos;
+  const box = $('actions');
+  box.innerHTML = '';
+  actionButtons = [];
+  const acts = PLAYER_ACTIONS[G.pos] || [];
+  for (const a of acts) {
+    const b = document.createElement('button');
+    b.className = 'abtn' + (a.cls ? ' ' + a.cls : '');
+    b.innerHTML = a.name + '<small>' + a.hint + '</small>';
+    b.onclick = () => playerAction(a);
+    box.appendChild(b);
+    actionButtons.push({btn:b, a, isDef:false});
+  }
+  const d = document.createElement('button');
+  d.className = 'abtn def';
+  d.innerHTML = 'Защита 🛡<small></small>';
+  d.onclick = () => {
+    G.stamYou = clamp(G.stamYou - 8, 0, 100);
+    G.defUntil = G.time + 4;
+    G.defCooldown = G.time + 9;
+    setLog('Вы в глухой защите: хват сбит, атаки соперника слабее.', '#74c69d');
+    sndTap();
+    updateActionButtons();
+  };
+  box.appendChild(d);
+  actionButtons.push({btn:d, a:null, isDef:true});
+  updateActionButtons();
+}
+function updateActionButtons() {
+  for (const it of actionButtons) {
+    if (it.isDef) {
+      const onCd = G.time < G.defCooldown;
+      it.btn.disabled = onCd || G.stamYou < 8;
+      it.btn.querySelector('small').textContent = onCd ? 'перезарядка…' : 'сбить атаку · 4 сек';
+    } else {
+      it.btn.disabled = G.stamYou < it.a.cost;
+    }
+  }
+}
+
+/* ═══════════════════════════ ДЕЙСТВИЯ ИГРОКА ═══════════════════════════ */
+function playerAction(a) {
+  if (G.screen !== 'fight') return;
+  if (a.restore) {
+    G.stamYou = clamp(G.stamYou + a.restore, 0, 100);
+    setLog('Вы контролируете позицию и восстанавливаете дыхание…', '#9ad1ff');
+    sndTap(); updateActionButtons(); return;
+  }
+  G.stamYou = clamp(G.stamYou - a.cost, 0, 100);
+  openQTE(a);
+}
+
+function openQTE(action) {
+  G.screen = 'qte';
+  const d = DIFFS[G.diff];
+  const stamF = 0.7 + 0.3 * (G.stamYou/100);
+  const zoneW = clamp(d.zone * (0.6 + action.chance) * stamF, 0.10, 0.5);
+  qteState = {
+    action, t: Math.random(), dir: 1,
+    speed: d.speed * rnd(.95,1.1),
+    zoneStart: rnd(0.12, 0.88 - zoneW), zoneW,
+  };
+  $('qteName').textContent = action.name;
+  $('qteZone').style.left = (qteState.zoneStart*100) + '%';
+  $('qteZone').style.width = (zoneW*100) + '%';
+  $('qte').classList.remove('hidden');
+}
+function closeQTE() { $('qte').classList.add('hidden'); qteState = null; }
+
+$('qteBtn').addEventListener('click', () => {
+  if (!qteState) return;
+  const q = qteState, a = q.action;
+  const hit = q.t >= q.zoneStart && q.t <= q.zoneStart + q.zoneW;
+  closeQTE();
+  G.screen = 'fight';
+  if (hit) {
+    if (a.sub) { sndOk(); startStruggle('attack', a); return; }
+    applyPlayerSuccess(a);
+  } else {
+    sndFail(); flash('#c0392b'); camShake = 0.25;
+    setLog('Мимо! ' + a.name + ' не прошёл — соперник защитился.', '#ff9d9d');
+    G.stamFoe = clamp(G.stamFoe - 4, 0, 100);
+  }
+  renderActions(); updateHUD();
+});
+
+function applyPlayerSuccess(a) {
+  sndOk(); flash('#2ecc71'); camShake = 0.4;
+  if (a.pts) G.ptsYou += a.pts;
+  if (a.to) G.pos = a.to;
+  const msgs = {
+    td:'Отличный тейкдаун! +2 очка.', pull:'Вы затянули соперника в закрытый гвард.',
+    passK:'Гвард пройден через колено! +3.', passS:'Стек-проход! Гвард смят. +3.',
+    sweepS:'Свип-ножницы! Вы сверху. +2.', sweepF:'Флауэр-свип прямо в маунт! +2.',
+    mnt:'Вы вышли в маунт! +4 очка.', rec:'Гвард восстановлен — вы в безопасности.',
+    brg:'Мост, разворот — вы вырвались в стойку!', upa:'УПА! Переворот — теперь вы сверху!',
+    elb:'Локти-колени: гвард возвращён.', back:'Спина взята, крюки в деле! +4.',
+    strip:'Крюки сняты! Вы ушли в гвард.',
+  };
+  setLog(msgs[a.id] || (a.name + ' — успех!'), '#9dffb0');
+  renderActions(); updateHUD();
+}
+
+/* ═══════════════════════════ БОРЬБА ═══════════════════════════ */
+function startStruggle(mode, action, aiAction) {
+  G.screen = 'struggle';
+  const d = DIFFS[G.diff];
+  const defBonus = (mode==='defense' && G.time < G.defUntil) ? 14 : 0;
+  stState = {
+    mode,
+    fill: (mode==='attack' ? d.atkStart : d.defStart + defBonus),
+    timeLeft: 6,
+    subName: action ? action.sub : (aiAction ? aiAction.sub : ''),
+  };
+  if (mode === 'attack') {
+    $('stName').textContent = '🔥 ДОЖИМАЙ ' + stState.subName.toUpperCase() + '!';
+    $('stSub').textContent = 'Тапай, чтобы дожать до того, как соперник вырвется!';
+    $('stBtn').textContent = 'ДОЖАТЬ!';
+  } else {
+    $('stName').textContent = '⚠️ ЗАЩИЩАЙСЯ: ' + stState.subName.toUpperCase() + '!';
+    $('stSub').textContent = 'Тапай, чтобы вырваться, пока не задушили!';
+    $('stBtn').textContent = 'ВЫРВАТЬСЯ!';
+  }
+  updateStruggleUI();
+  $('struggle').classList.remove('hidden');
+}
+function updateStruggleUI() {
+  $('stFill').style.width = clamp(stState.fill,0,100) + '%';
+  $('stTimer').textContent = stState.timeLeft.toFixed(1);
+}
+$('stBtn').addEventListener('click', () => {
+  if (!stState) return;
+  const d = DIFFS[G.diff];
+  const stamF = 0.7 + 0.3 * (G.stamYou/100);
+  stState.fill += d.tap * stamF;
+  sndTap(); camShake = Math.min(camShake + .06, .3);
+  if (stState.fill >= 100) finishStruggle(true);
+  else updateStruggleUI();
+});
+function finishStruggle(playerWon) {
+  const st = stState; stState = null;
+  $('struggle').classList.add('hidden');
+  G.screen = 'fight';
+  G.stamYou = clamp(G.stamYou - 10, 0, 100);
+  G.stamFoe = clamp(G.stamFoe - 10, 0, 100);
+  if (st.mode === 'attack') {
+    if (playerWon) { endMatch('you', 'Победа ' + st.subName + '! Соперник постучал. 🥋'); return; }
+    G.advYou++;
+    sndFail(); flash('#f0a500');
+    setLog('Соперник вырвался из ' + st.subName + '… но вы получили преимущество!', '#ffd54a');
+  } else {
+    if (playerWon) {
+      sndOk(); flash('#2ecc71');
+      G.advFoe++;
+      setLog('Вы вырвались! Соперник получил преимущество за попытку.', '#9dffb0');
+    } else {
+      endMatch('foe', 'Соперник провёл ' + st.subName + '. Вы постучали…'); return;
+    }
+  }
+  renderActions(); updateHUD();
+}
+
+/* ═══════════════════════════ ИИ ═══════════════════════════ */
+function aiAct() {
+  const d = DIFFS[G.diff];
+  const acts = AI_ACTIONS[G.pos];
+  if (!acts || !acts.length) return;
+  const total = acts.reduce((s,a)=>s+a.w,0);
+  let r = Math.random()*total, chosen = acts[0];
+  for (const a of acts) { r -= a.w; if (r <= 0) { chosen = a; break; } }
+
+  if (G.stamFoe < 15) {
+    G.stamFoe = clamp(G.stamFoe + 18, 0, 100);
+    setLog('Соперник тяжело дышит и держит позицию…', '#c9c9c9');
+    return;
+  }
+  G.stamFoe = clamp(G.stamFoe - 14, 0, 100);
+
+  const stamF = 0.7 + 0.3*(G.stamFoe/100);
+  let chance = chosen.chance * d.aiChance * stamF;
+  if (G.time < G.defUntil) chance *= 0.45;
+  chance = clamp(chance, .05, .9);
+
+  if (chosen.sub) {
+    if (Math.random() < chance) { sndFail(); startStruggle('defense', null, chosen); setLog(chosen.msg, '#ff9d9d'); }
+    else setLog('Соперник попытался поймать ' + chosen.sub + ', но вы вовремя убрали руки.', '#cfe3ff');
+    return;
+  }
+  if (Math.random() < chance) {
+    if (chosen.pts) G.ptsFoe += chosen.pts;
+    G.pos = chosen.to;
+    sndFail(); flash('#e67e22'); camShake = 0.4;
+    setLog(chosen.msg, '#ffbf8f');
+    renderActions();
+  } else {
+    setLog('Соперник пробует ' + chosen.name + ' — вы защитились!', '#cfe3ff');
+  }
+  updateHUD();
+}
+
+/* ═══════════════════════════ МАТЧ / РАУНДЫ ═══════════════════════════ */
+function startMatch() {
+  G.ptsYou = 0; G.ptsFoe = 0; G.advYou = 0; G.advFoe = 0;
+  G.round = 1;
+  startRound();
+}
+function startRound() {
+  G.pos = 'standing';
+  G.clock = G.roundTime;
+  if (G.round === 1) { G.stamYou = 100; G.stamFoe = 100; }
+  else G.stamFoe = clamp(G.stamFoe + 45, 0, 100);
+  G.defUntil = 0; G.defCooldown = 0;
+  G.aiTimer = rnd(DIFFS[G.diff].aiMin, DIFFS[G.diff].aiMax);
+  G.screen = 'fight';
+  ['menu','rest','end','qte','struggle'].forEach(id=>$(id).classList.add('hidden'));
+  setLog('Раунд ' + G.round + '. Пожали руки — боремся! Осс!', '#ffd54a');
+  sndBell();
+  renderActions(true); updateHUD();
+}
+function endRound() {
+  sndBell();
+  closeQTE();
+  if (stState) { $('struggle').classList.add('hidden'); stState = null; }
+  if (G.round >= G.totalRounds) { finalResult(); return; }
+  G.screen = 'rest';
+  G.round++;
+  G.stamYou = clamp(G.stamYou + 45, 0, 100);
+  $('restTitle').textContent = 'Конец раунда ' + (G.round-1);
+  $('restDetail').innerHTML =
+    'Счёт: <b>' + G.ptsYou + ' : ' + G.ptsFoe + '</b> (преим. ' + G.advYou + ':' + G.advFoe + ')<br>' +
+    (G.ptsYou > G.ptsFoe ? 'Вы ведёте — так держать!' :
+     G.ptsYou < G.ptsFoe ? 'Вы отстаёте — нужен проход или сабмишн!' :
+     'Равный бой. Решает следующий раунд!') +
+    '<br>Передышка: выносливость частично восстановлена.';
+  $('rest').classList.remove('hidden');
+}
+function finalResult() {
+  let winner, why;
+  if (G.ptsYou !== G.ptsFoe) {
+    winner = G.ptsYou > G.ptsFoe ? 'you' : 'foe';
+    why = 'по очкам ' + G.ptsYou + ':' + G.ptsFoe;
+  } else if (G.advYou !== G.advFoe) {
+    winner = G.advYou > G.advFoe ? 'you' : 'foe';
+    why = 'по преимуществам ' + G.advYou + ':' + G.advFoe + ' (очки ' + G.ptsYou + ':' + G.ptsFoe + ')';
+  } else { winner = 'draw'; why = 'абсолютно равный бой ' + G.ptsYou + ':' + G.ptsFoe; }
+  endMatch(winner, winner==='draw' ? 'Ничья — ' + why : 'Победа ' + why + '.');
+}
+function endMatch(winner, detail) {
+  G.screen = 'end';
+  closeQTE();
+  if (stState) { $('struggle').classList.add('hidden'); stState = null; }
+  const t = $('endTitle');
+  if (winner === 'you') { t.textContent = '🏆 ПОБЕДА!'; t.className = 'resultTitle win'; sndSub(); }
+  else if (winner === 'foe') { t.textContent = 'ПОРАЖЕНИЕ'; t.className = 'resultTitle lose'; sndFail(); }
+  else { t.textContent = '🤝 НИЧЬЯ'; t.className = 'resultTitle draw'; sndBell(); }
+  $('endDetail').innerHTML = detail + '<br>Соперник: ' + DIFFS[G.diff].name +
+    ' · раундов: ' + G.totalRounds;
+  $('end').classList.remove('hidden');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ███  3D-СЦЕНА (THREE.JS)  ███
+   ════════════════════════════════════════════════════════════════ */
+const wrap = $('matwrap');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
+wrap.insertBefore(renderer.domElement, wrap.firstChild);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05060b);
+scene.fog = new THREE.Fog(0x05060b, 10, 20);
+
+const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 60);
+
+/* ── Освещение: арена, свет бьёт сверху как на шоу ── */
+scene.add(new THREE.HemisphereLight(0x6f7fb8, 0x1a1410, 0.28));
+const key = new THREE.SpotLight(0xfff0d8, 1.6, 30, 0.62, 0.45, 1);
+key.position.set(2.2, 6.5, 1.6);
+key.target.position.set(0, 0, 0);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.bias = -0.002;
+scene.add(key, key.target);
+const fill = new THREE.PointLight(0x7fa0ff, 0.55, 14, 2);
+fill.position.set(-3.5, 3.4, -2.5);
+scene.add(fill);
+const rim = new THREE.PointLight(0xff9a55, 0.5, 12, 2);
+rim.position.set(3, 2.6, -3.2);
+scene.add(rim);
+// подсветка кожи снизу-сбоку, даёт «спортивный глянец»
+const sheen = new THREE.PointLight(0xfff6ea, 0.35, 8, 2);
+sheen.position.set(0, 1.2, 3.4);
+scene.add(sheen);
+
+/* ── Материалы-помощники ── */
+const MAT = (color, rough=0.85, metal=0) =>
+  new THREE.MeshStandardMaterial({ color, roughness:rough, metalness:metal });
+
+function canvasTexture(w, h, drawFn) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  drawFn(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.encoding = THREE.sRGBEncoding;
+  return t;
+}
+
+/* ── Арена: подиум, LED-борта, трибуны с толпой, прожекторы ── */
+function paintCrowd(g, w, h) {
+  // тёмный фон трибуны
+  const bg = g.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, '#07080f'); bg.addColorStop(1, '#12141f');
+  g.fillStyle = bg; g.fillRect(0, 0, w, h);
+  const skin = ['#e0ac69','#c68642','#8d5524','#f1c27d','#ffdbac'];
+  const cloth = ['#31405f','#5c2f3a','#2d4a38','#4a4458','#613f23','#243447','#54303f','#3c3c46'];
+  const rows = 7;
+  for (let r = 0; r < rows; r++) {
+    const y = h - (r + 0.5) * (h / rows) * 0.96;
+    const size = 14 - r * 1.1;          // дальние ряды мельче
+    const dim = 1 - r * 0.09;           // и темнее
+    for (let x = size; x < w; x += size * 1.75 + Math.random() * 6) {
+      const jx = x + rnd(-3, 3), jy = y + rnd(-4, 4);
+      // корпус
+      g.globalAlpha = 0.9 * dim;
+      g.fillStyle = cloth[Math.floor(Math.random() * cloth.length)];
+      g.fillRect(jx - size * 0.62, jy - size * 0.1, size * 1.24, size * 1.5);
+      // поднятые руки у части зрителей
+      if (Math.random() < 0.25) {
+        g.fillRect(jx - size * 0.85, jy - size * 0.75, size * 0.25, size * 0.8);
+        if (Math.random() < 0.6) g.fillRect(jx + size * 0.6, jy - size * 0.75, size * 0.25, size * 0.8);
+      }
+      // голова
+      g.fillStyle = skin[Math.floor(Math.random() * skin.length)];
+      g.beginPath(); g.arc(jx, jy - size * 0.42, size * 0.42, 0, Math.PI * 2); g.fill();
+    }
+  }
+  g.globalAlpha = 1;
+  // лёгкая дымка сверху
+  const haze = g.createLinearGradient(0, 0, 0, h * 0.55);
+  haze.addColorStop(0, 'rgba(5,6,11,.95)'); haze.addColorStop(1, 'rgba(5,6,11,0)');
+  g.fillStyle = haze; g.fillRect(0, 0, w, h * 0.55);
+}
+
+const crowdStands = [];
+function buildArena() {
+  const room = new THREE.Group();
+
+  // чёрный глянцевый пол арены вокруг подиума
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30),
+    new THREE.MeshStandardMaterial({ color:0x0a0c12, roughness:.35, metalness:.4 }));
+  floor.rotation.x = -Math.PI/2; floor.position.y = -0.26;
+  floor.receiveShadow = true;
+  room.add(floor);
+
+  // подиум под матом
+  const stage = new THREE.Mesh(new THREE.BoxGeometry(7.4, 0.26, 7.4), MAT(0x14161f, .6, .2));
+  stage.position.y = -0.13;
+  stage.receiveShadow = true;
+  room.add(stage);
+
+  // LED-борта подиума
+  const ledT = canvasTexture(1024, 96, (g,w,h)=> {
+    g.fillStyle = '#0a1a3a'; g.fillRect(0,0,w,h);
+    g.font = '900 62px sans-serif'; g.textBaseline = 'middle';
+    g.fillStyle = '#38b6ff'; g.textAlign = 'center';
+    g.fillText('★ BJJ ARENA ★   NIGHT OF CHAMPIONS   ★ BJJ ARENA ★', w/2, h/2);
+  });
+  for (const [x,z,ry] of [[0,3.72,0],[0,-3.72,Math.PI],[3.72,0,-Math.PI/2],[-3.72,0,Math.PI/2]]) {
+    const led = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 0.26),
+      new THREE.MeshBasicMaterial({ map:ledT }));
+    led.position.set(x, -0.13, z); led.rotation.y = ry;
+    room.add(led);
+  }
+
+  // соревновательный мат: жёлтая рабочая зона + красная зона (стиль ADCC/IBJJF)
+  const matT = canvasTexture(1024, 1024, (g,w,h)=> {
+    g.fillStyle = '#b8912f'; g.fillRect(0,0,w,h);            // внешняя зона
+    g.fillStyle = '#caa63c'; g.fillRect(w*0.09,h*0.09,w*0.82,h*0.82);
+    g.fillStyle = '#a8362e'; g.fillRect(w*0.16,h*0.16,w*0.68,h*0.68); // красная кайма
+    g.fillStyle = '#caa63c'; g.fillRect(w*0.235,h*0.235,w*0.53,h*0.53); // центр
+    // швы плиток
+    g.strokeStyle = 'rgba(0,0,0,.14)'; g.lineWidth = 3;
+    for (let i=1;i<7;i++) {
+      g.beginPath(); g.moveTo(w*i/7,0); g.lineTo(w*i/7,h); g.stroke();
+      g.beginPath(); g.moveTo(0,h*i/7); g.lineTo(w,h*i/7); g.stroke();
+    }
+    // логотип в центре
+    g.fillStyle = 'rgba(20,22,31,.85)';
+    g.font = '900 90px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+    g.fillText('BJJ', w/2, h/2 - 40);
+    g.font = '700 44px sans-serif';
+    g.fillText('ARENA', w/2, h/2 + 48);
+    g.strokeStyle = 'rgba(20,22,31,.6)'; g.lineWidth = 8;
+    g.beginPath(); g.arc(w/2, h/2, 170, 0, Math.PI*2); g.stroke();
+  });
+  const mat = new THREE.Mesh(new THREE.PlaneGeometry(7, 7),
+    new THREE.MeshStandardMaterial({ map:matT, roughness:.92 }));
+  mat.rotation.x = -Math.PI/2; mat.position.y = 0.002;
+  mat.receiveShadow = true;
+  room.add(mat);
+
+  // трибуны с толпой (4 стороны, наклонные)
+  for (const [x, z, ry] of [[0,-11,0],[0,11,Math.PI],[-11,0,Math.PI/2],[11,0,-Math.PI/2]]) {
+    const t = canvasTexture(1024, 512, paintCrowd);
+    const stand = new THREE.Mesh(new THREE.PlaneGeometry(22, 7),
+      new THREE.MeshBasicMaterial({ map:t, fog:true }));
+    stand.position.set(x, 2.8, z);
+    stand.rotation.y = ry;
+    stand.rotation.x = ry===0||ry===Math.PI ? -0.16 : 0;
+    room.add(stand);
+    crowdStands.push(stand);
+  }
+
+  // большой экран над ареной
+  const screenT = canvasTexture(1024, 512, (g,w,h)=> {
+    g.fillStyle = '#050810'; g.fillRect(0,0,w,h);
+    g.strokeStyle = '#1b2a4a'; g.lineWidth = 14; g.strokeRect(7,7,w-14,h-14);
+    g.fillStyle = '#38b6ff'; g.font='900 150px sans-serif';
+    g.textAlign='center'; g.textBaseline='middle';
+    g.fillText('BJJ ARENA', w/2, h/2 - 60);
+    g.fillStyle = '#ffd54a'; g.font='700 76px sans-serif';
+    g.fillText('NIGHT OF CHAMPIONS', w/2, h/2 + 90);
+  });
+  const bigscreen = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 3.2),
+    new THREE.MeshBasicMaterial({ map:screenT }));
+  bigscreen.position.set(0, 5.6, -10.5);
+  room.add(bigscreen);
+
+  // фермы освещения + видимые конусы света
+  const trussM = MAT(0x2a2d38, .5, .6);
+  for (const z of [-3.4, 3.4]) {
+    const truss = new THREE.Mesh(new THREE.BoxGeometry(9, 0.16, 0.16), trussM);
+    truss.position.set(0, 6.4, z);
+    room.add(truss);
+  }
+  const coneM = new THREE.MeshBasicMaterial({ color:0xfff3d6, transparent:true, opacity:0.05,
+    blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide, fog:false });
+  for (const [x,z] of [[-2.6,-3.4],[2.6,-3.4],[-2.6,3.4],[2.6,3.4],[0,-3.4],[0,3.4]]) {
+    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.2,0.3,10), MAT(0x111318,.4,.7));
+    lamp.position.set(x, 6.25, z);
+    room.add(lamp);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(1.6, 6.2, 20, 1, true), coneM);
+    cone.position.set(x*0.72, 3.1, z*0.55);
+    cone.rotation.x = z > 0 ? 0.12 : -0.12;
+    cone.rotation.z = x > 0 ? 0.1 : (x < 0 ? -0.1 : 0);
+    room.add(cone);
+  }
+
+  scene.add(room);
+}
+buildArena();
+
+/* ── Реальная модель бойца (Soldier.glb, риг Mixamo) + ретаргет поз ──
+   Идея: наша система поз работает на невидимом «скелете-марионетке»
+   (те же суставы, что раньше), а каждый кадр направления его костей
+   переносятся на скелет настоящей модели через кватернионы. */
+
+function makePuppet() {
+  const root = new THREE.Group();
+  const J = { root };
+  const spine = new THREE.Group(); spine.position.set(0, 0.13, 0); root.add(spine);
+  J.spine = spine;
+  const neck = new THREE.Group(); neck.position.set(0, 0.40, 0); spine.add(neck);
+  J.neck = neck;
+  for (const [side, sgn] of [['L',-1],['R',1]]) {
+    const sh = new THREE.Group(); sh.position.set(sgn*0.205, 0.30, 0); spine.add(sh);
+    J['sh'+side] = sh;
+    const el = new THREE.Group(); el.position.y = -0.27; sh.add(el);
+    J['el'+side] = el;
+    const hip = new THREE.Group(); hip.position.set(sgn*0.10, -0.05, 0); root.add(hip);
+    J['hip'+side] = hip;
+    const knee = new THREE.Group(); knee.position.y = -0.38; hip.add(knee);
+    J['knee'+side] = knee;
+  }
+  return J;
+}
+
+/* соответствие: сустав марионетки → кость Mixamo; знак — куда «растёт» кость
+   у марионетки (конечности вниз по -Y, позвоночник вверх по +Y) */
+const RETARGET_MAP = [
+  ['spine', 'mixamorigSpine1', 1],
+  ['spine', 'mixamorigSpine2', 1],
+  ['neck',  'mixamorigNeck',   1],
+  ['shL',   'mixamorigLeftArm',      -1],
+  ['elL',   'mixamorigLeftForeArm',  -1],
+  ['shR',   'mixamorigRightArm',     -1],
+  ['elR',   'mixamorigRightForeArm', -1],
+  ['hipL',  'mixamorigLeftUpLeg',  -1],
+  ['kneeL', 'mixamorigLeftLeg',    -1],
+  ['hipR',  'mixamorigRightUpLeg', -1],
+  ['kneeR', 'mixamorigRightLeg',   -1],
+];
+
+let soldierScene = null;   // исходная загруженная модель
+const FIGHTER_SCALE = 0.97;
+
+function makeGlbFighter(tintHex) {
+  const model = THREE.SkeletonUtils.clone(soldierScene);
+  model.traverse(o => {
+    if (o.isMesh || o.isSkinnedMesh) {
+      o.castShadow = true;
+      o.frustumCulled = false;            // кости уводят меш за bind-бокс
+      o.material = o.material.clone();
+      o.material.color = new THREE.Color(tintHex);
+    }
+  });
+  const container = new THREE.Group();
+  container.add(model);
+  model.scale.setScalar(FIGHTER_SCALE);
+  // выравниваем бёдра модели в начало координат контейнера:
+  // контейнер двигается/вращается ровно как корень марионетки
+  model.updateMatrixWorld(true);
+  const bones = {};
+  model.traverse(o => { if (o.isBone) bones[o.name.replace(/[^A-Za-z0-9]/g, '')] = o; });
+  const hp = new THREE.Vector3();
+  bones['mixamorigHips'].getWorldPosition(hp);
+  model.position.sub(hp);
+  scene.add(container);
+  return { container, bones };
+}
+
+const _rv1 = new THREE.Vector3(), _rv2 = new THREE.Vector3();
+const _rq1 = new THREE.Quaternion(), _rq2 = new THREE.Quaternion();
+const _UP = new THREE.Vector3(0, 1, 0);
+
+function retarget(puppet, fig) {
+  if (!fig) return;
+  puppet.root.updateMatrixWorld(true);
+  fig.container.position.copy(puppet.root.position);
+  fig.container.quaternion.copy(puppet.root.quaternion);
+  fig.container.updateMatrixWorld(true);
+  for (const [j, bname, sgn] of RETARGET_MAP) {
+    const bone = fig.bones[bname];
+    if (!bone) continue;
+    puppet[j].getWorldQuaternion(_rq1);
+    _rv1.set(0, sgn, 0).applyQuaternion(_rq1);          // желаемое направление кости в мире
+    bone.parent.getWorldQuaternion(_rq2);
+    _rv2.copy(_rv1).applyQuaternion(_rq2.invert());     // в системе родителя кости
+    bone.quaternion.setFromUnitVectors(_UP, _rv2.normalize());
+    bone.updateMatrixWorld(true);
+  }
+}
+
+/* ── марионетки и модели ── */
+const YOU = makePuppet();
+const FOE = makePuppet();
+let FIG_YOU = null, FIG_FOE = null;
+const FOE_TINTS = [0xffd9c4, 0xff9f86, 0xc96b52];   // светлее → темнее по сложности
+let modelsReady = false;
+
+new THREE.GLTFLoader().load('Soldier.glb', (gltf) => {
+  soldierScene = gltf.scene;
+  FIG_YOU = makeGlbFighter(0x9db9ff);   // синий угол
+  spawnFoe();
+  modelsReady = true;
+  const b = $('btnStart');
+  b.disabled = false;
+  b.textContent = 'НА КОВЁР!';
+}, undefined, (err) => {
+  console.error('GLB load error', err);
+  $('btnStart').textContent = 'ОШИБКА ЗАГРУЗКИ МОДЕЛИ';
+});
+
+function spawnFoe() {
+  if (!soldierScene) return;
+  if (FIG_FOE) scene.remove(FIG_FOE.container);
+  FIG_FOE = makeGlbFighter(FOE_TINTS[G.diff]);
+}
+
+
+/* ── Позы ──
+   Суставы: spine, neck, shL/R (плечи), elL/R (локти), hipL/R (бёдра), kneeL/R (колени).
+   Юниты — радианы. Персонаж смотрит вдоль +Z при yaw=0. */
+const P_STAND = { spine:[0.35,0,0], neck:[-0.28,0,0],
+  shL:[-1.1,0,-0.18], shR:[-1.1,0,0.18], elL:[-0.65,0,0], elR:[-0.65,0,0],
+  hipL:[-0.35,0,-0.08], hipR:[-0.35,0,0.08], kneeL:[0.65,0,0], kneeR:[0.65,0,0] };
+
+const P_KNEEL_GT = { spine:[0.5,0,0], neck:[-0.4,0,0],
+  shL:[-1.25,0,-0.25], shR:[-1.25,0,0.25], elL:[-0.45,0,0], elR:[-0.45,0,0],
+  hipL:[-0.55,0,-0.3], hipR:[-0.55,0,0.3], kneeL:[1.9,0,0], kneeR:[1.9,0,0] };
+
+const P_GUARD_BTM = { spine:[0.3,0,0], neck:[0.45,0,0],
+  shL:[-1.35,0,-0.35], shR:[-1.35,0,0.35], elL:[-0.55,0,0], elR:[-0.55,0,0],
+  hipL:[-1.5,0,-0.55], hipR:[-1.5,0,0.55], kneeL:[1.35,0,0], kneeR:[1.35,0,0] };
+
+const P_LIE_FLAT = { spine:[0.12,0,0], neck:[0.3,0,0],
+  shL:[-1.2,0,-0.45], shR:[-1.2,0,0.45], elL:[-0.95,0,0], elR:[-0.95,0,0],
+  hipL:[-0.3,0,-0.18], hipR:[-0.3,0,0.18], kneeL:[0.55,0,0], kneeR:[0.55,0,0] };
+
+const P_LIE_DEFEND = { spine:[0.18,0,0], neck:[0.4,0,0],
+  shL:[-1.5,0,-0.2], shR:[-1.5,0,0.2], elL:[-1.35,0,0], elR:[-1.35,0,0],
+  hipL:[-0.45,0,-0.2], hipR:[-0.45,0,0.2], kneeL:[0.8,0,0], kneeR:[0.8,0,0] };
+
+const P_SIDE_TOP = { spine:[0.95,0,0], neck:[-0.65,0,0],
+  shL:[-1.5,0,-0.5], shR:[-1.5,0,0.5], elL:[-0.95,0,0], elR:[-0.95,0,0],
+  hipL:[-0.7,0,-0.3], hipR:[-0.7,0,0.3], kneeL:[1.7,0,0], kneeR:[1.7,0,0] };
+
+const P_MOUNT_TOP = { spine:[0.28,0,0], neck:[-0.25,0,0],
+  shL:[-1.0,0,-0.3], shR:[-1.0,0,0.3], elL:[-0.75,0,0], elR:[-0.75,0,0],
+  hipL:[-1.1,0,-0.85], hipR:[-1.1,0,0.85], kneeL:[1.65,0,0], kneeR:[1.65,0,0] };
+
+const P_BACK_TOP = { spine:[0.4,0,0], neck:[0.15,0,0],
+  shL:[-1.5,0,-0.35], shR:[-1.5,0,0.35], elL:[-1.4,0,0], elR:[-1.4,0,0],
+  hipL:[-1.2,0,-0.8], hipR:[-1.2,0,0.8], kneeL:[1.55,0,0], kneeR:[1.55,0,0] };
+
+const P_BACK_SEAT = { spine:[0.2,0,0], neck:[0.1,0,0],
+  shL:[-1.55,0,-0.12], shR:[-1.55,0,0.12], elL:[-1.5,0,0], elR:[-1.5,0,0],
+  hipL:[-0.65,0,-0.22], hipR:[-0.65,0,0.22], kneeL:[2.0,0,0], kneeR:[2.0,0,0] };
+
+/* Раскладка сцены: позиция игрока → {you, foe}
+   f: {p:[x,y,z], yaw, pitch, j:поза} */
+const SCENES = {
+  standing: {
+    you: { p:[0, 0.80, 0.62], yaw:Math.PI, pitch:0, j:P_STAND },
+    foe: { p:[0, 0.80, -0.62], yaw:0, pitch:0, j:P_STAND },
+  },
+  guard_top: {
+    foe: { p:[0, 0.15, -0.12], yaw:0, pitch:-Math.PI/2, j:P_GUARD_BTM },
+    you: { p:[0, 0.46, 0.46], yaw:Math.PI, pitch:0, j:P_KNEEL_GT },
+  },
+  guard_bottom: {
+    you: { p:[0, 0.15, 0.12], yaw:Math.PI, pitch:-Math.PI/2, j:P_GUARD_BTM },
+    foe: { p:[0, 0.46, -0.46], yaw:0, pitch:0, j:P_KNEEL_GT },
+  },
+  side_top: {
+    foe: { p:[0, 0.15, -0.05], yaw:0, pitch:-Math.PI/2, j:P_LIE_FLAT },
+    you: { p:[0.34, 0.44, -0.30], yaw:-Math.PI/2, pitch:0, j:P_SIDE_TOP },
+  },
+  side_bottom: {
+    you: { p:[0, 0.15, 0.05], yaw:Math.PI, pitch:-Math.PI/2, j:P_LIE_FLAT },
+    foe: { p:[0.34, 0.44, 0.30], yaw:-Math.PI/2, pitch:0, j:P_SIDE_TOP },
+  },
+  mount_top: {
+    foe: { p:[0, 0.15, -0.05], yaw:0, pitch:-Math.PI/2, j:P_LIE_DEFEND },
+    you: { p:[0, 0.56, -0.30], yaw:Math.PI, pitch:0, j:P_MOUNT_TOP },
+  },
+  mount_bottom: {
+    you: { p:[0, 0.15, 0.05], yaw:Math.PI, pitch:-Math.PI/2, j:P_LIE_DEFEND },
+    foe: { p:[0, 0.56, 0.30], yaw:0, pitch:0, j:P_MOUNT_TOP },
+  },
+  back_top: {
+    foe: { p:[0, 0.50, 0.08], yaw:0, pitch:0, j:P_BACK_SEAT },
+    you: { p:[0, 0.60, -0.26], yaw:0, pitch:0.25, j:P_BACK_TOP },
+  },
+  back_bottom: {
+    you: { p:[0, 0.50, -0.08], yaw:Math.PI, pitch:0, j:P_BACK_SEAT },
+    foe: { p:[0, 0.60, 0.26], yaw:Math.PI, pitch:0.25, j:P_BACK_TOP },
+  },
+};
+
+/* ── Применение поз с плавной интерполяцией ── */
+const _e = new THREE.Euler(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
+const JOINTS = ['spine','neck','shL','shR','elL','elR','hipL','hipR','kneeL','kneeR'];
+// случайные фазы для «живого» микродвижения
+const wobble = {};
+for (const who of ['you','foe']) {
+  wobble[who] = {};
+  for (const j of JOINTS) wobble[who][j] = [rnd(0,6), rnd(1.5,2.6), rnd(0,6)];
+}
+
+function applyFighter(F, cfg, who, dt, intensity) {
+  const k = 1 - Math.exp(-7*dt);
+  // корень: позиция
+  F.root.position.lerp(new THREE.Vector3(...cfg.p), k);
+  // корень: ориентация yaw+pitch
+  _q.setFromEuler(_e.set(0, cfg.yaw, 0));
+  _q2.setFromEuler(_e.set(cfg.pitch, 0, 0));
+  _q.multiply(_q2);
+  F.root.quaternion.slerp(_q, k);
+  // суставы
+  const t = G.time;
+  for (const j of JOINTS) {
+    const target = cfg.j[j] || [0,0,0];
+    const wb = wobble[who][j];
+    const amp = 0.05 * intensity;
+    _q2.setFromEuler(_e.set(
+      target[0] + Math.sin(t*wb[1] + wb[0]) * amp,
+      target[1],
+      target[2] + Math.cos(t*wb[1]*0.8 + wb[2]) * amp * 0.6
+    ));
+    F[j].quaternion.slerp(_q2, k);
+  }
+}
+
+/* ── Камера: медленный кинематографичный облёт ── */
+let camAngle = 0.7;
+let camDist = 3.1, camHeight = 1.75;
+function updateCamera(dt) {
+  const struggling = G.screen === 'struggle';
+  const targetDist = struggling ? 2.1 : (G.pos === 'standing' ? 3.1 : 2.7);
+  const targetH = struggling ? 1.05 : (G.pos === 'standing' ? 1.4 : 1.7);
+  camDist += (targetDist - camDist) * (1 - Math.exp(-2*dt));
+  camHeight += (targetH - camHeight) * (1 - Math.exp(-2*dt));
+  camAngle += dt * (G.screen === 'menu' ? 0.25 : 0.12);
+  camShake = Math.max(0, camShake - dt*1.2);
+  const shx = (Math.random()-0.5) * camShake * 0.12;
+  const shy = (Math.random()-0.5) * camShake * 0.12;
+  camera.position.set(
+    Math.sin(camAngle) * camDist + shx,
+    camHeight + shy,
+    Math.cos(camAngle) * camDist
+  );
+  camera.lookAt(0, 0.45, 0);
+}
+
+function resize3d() {
+  const r = wrap.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / r.height;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize3d);
+
+/* ═══════════════════════════ ГЛАВНЫЙ ЦИКЛ ═══════════════════════════ */
+let lastT = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastT)/1000);
+  lastT = now;
+  G.time += dt;
+
+  if (G.screen === 'fight') {
+    G.clock -= dt;
+    const regen = G.time < G.defUntil ? 4.5 : 2.8;
+    G.stamYou = clamp(G.stamYou + regen*dt, 0, 100);
+    G.stamFoe = clamp(G.stamFoe + DIFFS[G.diff].aiRegen*dt, 0, 100);
+    G.aiTimer -= dt;
+    if (G.aiTimer <= 0) {
+      aiAct();
+      G.aiTimer = rnd(DIFFS[G.diff].aiMin, DIFFS[G.diff].aiMax);
+    }
+    if (G.clock <= 0) endRound();
+    updateActionButtons();
+    updateHUD();
+  }
+  else if (G.screen === 'qte' && qteState) {
+    const q = qteState;
+    q.t += q.dir * q.speed * dt;
+    if (q.t > 1) { q.t = 1; q.dir = -1; }
+    if (q.t < 0) { q.t = 0; q.dir = 1; }
+    $('qteMark').style.left = 'calc(' + (q.t*100) + '% - 3px)';
+    G.clock -= dt*0.5;
+  }
+  else if (G.screen === 'struggle' && stState) {
+    stState.timeLeft -= dt;
+    stState.fill -= DIFFS[G.diff].drain * dt;
+    if (stState.fill <= 0) finishStruggle(false);
+    else if (stState.timeLeft <= 0) finishStruggle(stState.mode !== 'attack');
+    else updateStruggleUI();
+  }
+
+  // 3D-анимация
+  const sc = SCENES[G.pos] || SCENES.standing;
+  const intensity = G.screen === 'struggle' ? 4.5 : (G.screen === 'fight' ? 1.4 : 0.8);
+  applyFighter(YOU, sc.you, 'you', dt, intensity);
+  applyFighter(FOE, sc.foe, 'foe', dt, intensity);
+  retarget(YOU, FIG_YOU);
+  retarget(FOE, FIG_FOE);
+  // толпа слегка раскачивается
+  for (let i = 0; i < crowdStands.length; i++)
+    crowdStands[i].position.y = 2.8 + Math.sin(G.time*1.4 + i*1.7) * 0.045;
+  updateCamera(dt);
+  renderer.render(scene, camera);
+
+  requestAnimationFrame(loop);
+}
+
+/* ═══════════════════════════ МЕНЮ / СОБЫТИЯ ═══════════════════════════ */
+function chipGroup(boxId, onPick) {
+  const box = $(boxId);
+  box.addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    box.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));
+    b.classList.add('sel');
+    onPick(+b.dataset.v);
+    sndTap();
+  });
+}
+chipGroup('diffChips',  v => { G.diff = v; spawnFoe(); });
+chipGroup('roundChips', v => G.totalRounds = v);
+chipGroup('timeChips',  v => G.roundTime = v);
+
+$('btnStart').onclick = () => {
+  if (!modelsReady) return;
+  $('foeName').textContent = DIFFS[G.diff].name;
+  startMatch();
+};
+$('btnNextRound').onclick = () => startRound();
+$('btnAgain').onclick = () => { $('foeName').textContent = DIFFS[G.diff].name; startMatch(); };
+$('btnMenu').onclick = () => {
+  G.screen = 'menu';
+  $('end').classList.add('hidden');
+  $('menu').classList.remove('hidden');
+};
+['stBtn','qteBtn'].forEach(id => {
+  $(id).addEventListener('pointerdown', e => e.preventDefault());
+});
+document.addEventListener('dblclick', e => e.preventDefault(), {passive:false});
+
+/* отладочные хуки (для тестов) */
+window.__G = G;
+window.__setPos = p => { G.pos = p; renderActions(); updateHUD(); };
+window.__setCam = (a,d,h) => { camAngle = a; if(d)camDist=d; if(h)camHeight=h; };
+
+resize3d();
+updateHUD();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

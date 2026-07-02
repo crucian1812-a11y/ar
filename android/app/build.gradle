@@ -29,7 +29,8 @@ android {
 // игры лежат в корне репозитория — копируем их в assets при каждой сборке
 tasks.register('copyGames', Copy) {
     from(rootProject.projectDir.parentFile) {
-        include 'bjj.html', 'bjj3d.html', 'bjjpro.html', 'three.min.js'
+        include 'bjj.html', 'bjj3d.html', 'bjjpro.html', 'bjjreal.html',
+                'three.min.js', 'GLTFLoader.js', 'SkeletonUtils.js', 'Soldier.glb'
     }
     into layout.projectDirectory.dir('src/main/assets')
 }

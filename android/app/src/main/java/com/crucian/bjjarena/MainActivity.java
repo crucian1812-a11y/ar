@@ -25,6 +25,9 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(true);
+        // 3D-модели (GLB) грузятся через XHR из file:///android_asset
+        s.setAllowFileAccessFromFileURLs(true);
+        s.setAllowUniversalAccessFromFileURLs(true);
         webView.setWebChromeClient(new WebChromeClient());
         webView.setBackgroundColor(0xFF0E1420);
         setContentView(webView);
