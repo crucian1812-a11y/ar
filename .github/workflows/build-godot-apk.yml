@@ -89,8 +89,15 @@ jobs:
 
       - name: Export APK
         run: |
+          echo "--- export templates ---"
+          ls -la ~/.local/share/godot/export_templates/ ~/.local/share/godot/export_templates/4.3.stable/ | head -30
           mkdir -p build
-          ~/godot-bin/godot --headless --path godot --export-debug "Android" "$PWD/build/bjj-godot.apk" --verbose 2>&1 | tee export.log | grep -viE "^(reimport|import|loading|core|drivers|servers|editor/import)" | tail -80
+          set +e
+          ~/godot-bin/godot --headless --path godot --export-debug "Android" "$PWD/build/bjj-godot.apk" --verbose > export.log 2>&1
+          code=$?
+          echo "--- export log tail ---"
+          tail -120 export.log
+          set -e
           test -f build/bjj-godot.apk
 
       - name: Upload artifact
