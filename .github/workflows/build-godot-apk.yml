@@ -1,0 +1,102 @@
+name: Build Godot APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, 'claude/**' ]
+    paths:
+      - 'godot/**'
+      - '.github/workflows/build-godot-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache Godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot-bin
+            ~/.local/share/godot/export_templates
+          key: godot-4.3-stable-v1
+
+      - name: Download Godot and export templates
+        run: |
+          set -e
+          if [ ! -f ~/godot-bin/godot ]; then
+            mkdir -p ~/godot-bin
+            curl -sSL -o godot.zip https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
+            unzip -q godot.zip
+            mv Godot_v4.3-stable_linux.x86_64 ~/godot-bin/godot
+            chmod +x ~/godot-bin/godot
+          fi
+          if [ ! -d ~/.local/share/godot/export_templates/4.3.stable ]; then
+            curl -sSL -o templates.tpz https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
+            mkdir -p ~/.local/share/godot/export_templates/4.3.stable
+            unzip -q templates.tpz
+            mv templates/* ~/.local/share/godot/export_templates/4.3.stable/
+          fi
+          ~/godot-bin/godot --version
+
+      - name: Generate debug keystore
+        run: |
+          keytool -genkeypair -v -keystore ~/debug.keystore \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Configure editor settings (Android SDK)
+        run: |
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-4.3.tres <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/debug_keystore = "$HOME/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          cp ~/.config/godot/editor_settings-4.3.tres ~/.config/godot/editor_settings-4.tres
+
+      - name: Import project
+        run: ~/godot-bin/godot --headless --path godot --import 2>&1 | tail -20 || true
+
+      - name: Validate scripts (run 5 frames headless)
+        run: |
+          ~/godot-bin/godot --headless --path godot --quit-after 5 2>&1 | tee run.log || true
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script" run.log; then
+            echo "::error::Script errors found"
+            exit 1
+          fi
+
+      - name: Export APK
+        run: |
+          mkdir -p build
+          ~/godot-bin/godot --headless --path godot --export-debug "Android" "$PWD/build/bjj-godot.apk" 2>&1 | tee export.log
+          test -f build/bjj-godot.apk
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bjj-godot-apk
+          path: build/bjj-godot.apk
+
+      - name: Publish to release "apk-latest"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: 'BJJ Arena — APK (свежая сборка)'
+          files: build/bjj-godot.apk
