@@ -836,202 +836,172 @@ function buildArena() {
 }
 buildArena();
 
-/* ── Атлетичный боец но-ги: голый торс с мышечным рельефом, шорты, наколенники ── */
-function absTexture(baseHex) {
-  const base = '#' + baseHex.toString(16).padStart(6,'0');
-  return canvasTexture(256, 320, (g,w,h)=> {
-    g.clearRect(0,0,w,h);
-    // основа с мягкими прозрачными краями — вливается в торс
-    const grad = g.createRadialGradient(w/2, h/2, w*0.1, w/2, h/2, w*0.62);
-    grad.addColorStop(0, base); grad.addColorStop(0.72, base);
-    grad.addColorStop(1, base + '00');
-    g.fillStyle = grad;
-    g.fillRect(0,0,w,h);
-    const shade = 'rgba(60,30,10,.22)', hilite = 'rgba(255,240,220,.12)';
-    // центральная линия
-    g.fillStyle = shade; g.fillRect(w/2-3, h*0.12, 6, h*0.72);
-    // кубики 3×2
-    for (let r=0; r<3; r++) for (const s of [-1,1]) {
-      const cx = w/2 + s*w*0.17, cy = h*0.2 + r*h*0.23;
-      g.fillStyle = hilite;
-      g.beginPath(); g.ellipse(cx, cy, w*0.135, h*0.085, 0, 0, Math.PI*2); g.fill();
-      g.fillStyle = shade;
-      g.beginPath(); g.ellipse(cx, cy + h*0.065, w*0.135, h*0.02, 0, 0, Math.PI*2); g.fill();
-    }
-  });
-}
-
+/* ── Аккуратный боец в кимоно (ги) ──
+   Гладкие формы: куртка-lathe с юбкой, V-ворот, рукава с манжетами,
+   штаны ги, пояс с узлом, босые ступни. */
 function makeFighter(cfg) {
-  const skin  = new THREE.MeshStandardMaterial({ color:cfg.skin, roughness:.45, metalness:.05 });
-  const skinD = new THREE.MeshStandardMaterial({ color:cfg.skin, roughness:.55, metalness:.03 });
-  const shortsM = MAT(cfg.shorts, .75);
-  const trimM = MAT(cfg.trim, .6);
-  const padM  = MAT(0x17181d, .8);
-  const hairM = MAT(cfg.hairColor, .9);
+  const gi     = MAT(cfg.gi, .88);
+  const giEdge = MAT(cfg.giEdge, .85);   // ворот/манжеты
+  const skin   = new THREE.MeshStandardMaterial({ color:cfg.skin, roughness:.55, metalness:.02 });
+  const beltM  = MAT(cfg.belt, .8);
+  const hairM  = MAT(cfg.hairColor, .92);
 
   const root = new THREE.Group();
   const J = { root };
-  const shadowify = m => { m.castShadow = true; return m; };
+  const S = m => { m.castShadow = true; return m; };
 
-  // ── шорты ──
-  const shorts = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.18, 0.225), shortsM));
-  shorts.position.y = 0.0;
-  root.add(shorts);
-  const waistband = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.05, 0.235), trimM));
-  waistband.position.y = 0.085;
-  root.add(waistband);
+  // ── таз (штаны, гладкая форма) ──
+  const seat = S(new THREE.Mesh(new THREE.SphereGeometry(0.145, 18, 14), gi));
+  seat.position.y = 0.0;
+  seat.scale.set(1.12, 0.62, 0.85);
+  root.add(seat);
 
-  // ── торс: V-образный мышечный силуэт (lathe) ──
+  // ── куртка (lathe с расклешённой юбкой) ──
   const spine = new THREE.Group(); spine.position.set(0, 0.13, 0); root.add(spine);
   J.spine = spine;
-  const profile = [
-    [0.128,-0.05],[0.124,0.03],[0.132,0.11],[0.152,0.19],
-    [0.168,0.27],[0.168,0.33],[0.128,0.385],[0.066,0.415],
+  const prof = [
+    [0.180,-0.155],[0.168,-0.06],[0.158,0.02],[0.156,0.10],
+    [0.166,0.18],[0.174,0.25],[0.168,0.31],[0.132,0.365],[0.070,0.405],
   ].map(p => new THREE.Vector2(p[0], p[1]));
-  const torso = shadowify(new THREE.Mesh(new THREE.LatheGeometry(profile, 24), skin));
-  torso.scale.set(1.24, 1, 0.74);
-  spine.add(torso);
-  // пресс
-  const abs = new THREE.Mesh(new THREE.PlaneGeometry(0.185, 0.235),
-    new THREE.MeshStandardMaterial({ map:absTexture(cfg.skin), roughness:.5,
-      transparent:true, depthWrite:false }));
-  abs.position.set(0, 0.115, 0.099);
-  abs.rotation.x = -0.06;
-  spine.add(abs);
-  // грудные
-  for (const s of [-1,1]) {
-    const pec = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.072, 14, 12), skin));
-    pec.position.set(s*0.078, 0.275, 0.088);
-    pec.scale.set(1.2, 0.72, 0.5);
-    spine.add(pec);
+  const jacket = S(new THREE.Mesh(new THREE.LatheGeometry(prof, 28), gi));
+  jacket.scale.set(1.16, 1, 0.80);
+  spine.add(jacket);
+  // V-ворот (запа́х куртки)
+  for (const s of [-1, 1]) {
+    const lap = S(new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.34, 0.020), giEdge));
+    lap.position.set(s*0.052, 0.20, 0.118);
+    lap.rotation.z = s*0.30;
+    lap.rotation.x = -0.10;
+    spine.add(lap);
   }
-  // трапеции
-  const traps = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.082, 14, 10), skinD));
-  traps.position.set(0, 0.365, -0.012);
-  traps.scale.set(1.5, 0.52, 0.9);
-  spine.add(traps);
+  // ворот сзади на шее
+  const backCollar = S(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.082, 0.045, 16, 1, true), giEdge));
+  backCollar.position.set(0, 0.375, -0.01);
+  spine.add(backCollar);
+  // пояс на куртке
+  const belt = S(new THREE.Mesh(new THREE.CylinderGeometry(0.175, 0.180, 0.055, 22), beltM));
+  belt.position.set(0, -0.045, 0);
+  belt.scale.set(1.12, 1, 0.80);
+  spine.add(belt);
+  const knot = S(new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), beltM));
+  knot.position.set(0, -0.045, 0.135);
+  knot.scale.set(1.25, 0.8, 0.7);
+  spine.add(knot);
+  for (const s of [-1,1]) {
+    const tail = S(new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.16, 0.016), beltM));
+    tail.position.set(s*0.04, -0.135, 0.135);
+    tail.rotation.z = s*0.22;
+    spine.add(tail);
+  }
 
   // ── шея → голова ──
   const neck = new THREE.Group(); neck.position.set(0, 0.40, 0); spine.add(neck);
   J.neck = neck;
-  const neckMesh = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.072, 0.10, 12), skin));
+  const neckMesh = S(new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.06, 0.09, 12), skin));
   neckMesh.position.y = 0.02;
   neck.add(neckMesh);
-  const head = new THREE.Group(); head.position.y = 0.155; neck.add(head);
-  const skull = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.105, 22, 18), skin));
-  skull.scale.set(0.9, 1.06, 0.95);
+  const head = new THREE.Group(); head.position.y = 0.15; neck.add(head);
+  const skull = S(new THREE.Mesh(new THREE.SphereGeometry(0.103, 24, 18), skin));
+  skull.scale.set(0.92, 1.04, 0.96);
   head.add(skull);
-  // подбородок/челюсть
-  const jaw = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.062, 14, 12), skin));
-  jaw.position.set(0, -0.058, 0.026);
-  jaw.scale.set(0.88, 0.72, 0.95);
-  head.add(jaw);
-  // надбровная дуга
-  const browRidge = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.125, 0.02, 0.03), skinD));
-  browRidge.position.set(0, 0.05, 0.082);
-  head.add(browRidge);
   if (cfg.hair !== 'bald') {
-    const hair = shadowify(new THREE.Mesh(
-      new THREE.SphereGeometry(0.108, 20, 12, 0, Math.PI*2, 0, Math.PI/2.1), hairM));
-    hair.position.y = 0.008; hair.rotation.x = -0.22;
-    hair.scale.set(0.93, 0.9, 1.0);
+    const hair = S(new THREE.Mesh(
+      new THREE.SphereGeometry(0.107, 22, 14, 0, Math.PI*2, 0, Math.PI/1.9), hairM));
+    hair.position.y = 0.006; hair.rotation.x = -0.28;
+    hair.scale.set(0.92, 0.96, 0.99);
     head.add(hair);
   }
   if (cfg.beard) {
-    const beard = shadowify(new THREE.Mesh(
-      new THREE.SphereGeometry(0.096, 16, 10, 0, Math.PI*2, Math.PI/2.2, Math.PI/2), hairM));
-    beard.position.set(0, -0.02, 0.022);
+    const beard = S(new THREE.Mesh(
+      new THREE.SphereGeometry(0.093, 18, 10, 0, Math.PI*2, Math.PI/2.1, Math.PI/2.4), hairM));
+    beard.position.set(0, -0.018, 0.02);
     head.add(beard);
   }
   for (const s of [-1,1]) {
-    const eyeW = new THREE.Mesh(new THREE.SphereGeometry(0.017, 8, 8), MAT(0xf4f4f4,.4));
-    eyeW.position.set(s*0.037, 0.014, 0.086);
-    head.add(eyeW);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.0075, 6, 6), MAT(0x1a120c,.3));
-    pupil.position.set(s*0.037, 0.014, 0.100);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.0155, 10, 8), MAT(0xfbfbfb,.35));
+    eye.position.set(s*0.036, 0.012, 0.085);
+    head.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.007, 8, 6), MAT(0x241812,.3));
+    pupil.position.set(s*0.036, 0.012, 0.098);
     head.add(pupil);
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.009, 0.012), hairM);
-    brow.position.set(s*0.037, 0.047, 0.093);
-    brow.rotation.z = s*-0.16;
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.0075, 0.011), hairM);
+    brow.position.set(s*0.036, 0.043, 0.090);
+    brow.rotation.z = s*-0.12;
     head.add(brow);
-    // борцовские уши
-    const ear = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), skin));
-    ear.position.set(s*0.094, 0, 0); ear.scale.set(0.55, 1, 0.8);
+    const ear = S(new THREE.Mesh(new THREE.SphereGeometry(0.021, 10, 8), skin));
+    ear.position.set(s*0.093, -0.002, 0);
+    ear.scale.set(0.5, 0.9, 0.75);
     head.add(ear);
   }
-  const nose = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.038, 0.026), skin));
-  nose.position.set(0, -0.01, 0.096);
+  const nose = S(new THREE.Mesh(new THREE.SphereGeometry(0.016, 10, 8), skin));
+  nose.position.set(0, -0.012, 0.098);
+  nose.scale.set(0.85, 1.1, 1);
   head.add(nose);
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.008, 0.01), MAT(0x6e4038,.6));
-  mouth.position.set(0, -0.052, 0.088);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.007, 0.008), MAT(0x8a5a50,.6));
+  mouth.position.set(0, -0.052, 0.086);
   head.add(mouth);
 
-  // ── руки: дельты, бицепсы, сужающиеся предплечья ──
+  // ── руки: рукава ги с манжетами, кисти голые ──
   for (const [side, sgn] of [['L',-1],['R',1]]) {
     const sh = new THREE.Group(); sh.position.set(sgn*0.205, 0.30, 0); spine.add(sh);
     J['sh'+side] = sh;
-    const delt = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.078, 14, 12), skin));
-    delt.scale.set(1.05, 0.95, 0.95);
-    sh.add(delt);
-    const uarm = shadowify(new THREE.Mesh(new THREE.CapsuleGeometry(0.054, 0.15, 6, 12), skin));
-    uarm.position.y = -0.13;
-    sh.add(uarm);
-    const bicep = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 10), skin));
-    bicep.position.set(0, -0.115, 0.028);
-    bicep.scale.set(0.9, 1.25, 0.85);
-    sh.add(bicep);
+    const shoulder = S(new THREE.Mesh(new THREE.SphereGeometry(0.072, 16, 12), gi));
+    sh.add(shoulder);
+    const sleeveU = S(new THREE.Mesh(new THREE.CylinderGeometry(0.060, 0.064, 0.20, 14), gi));
+    sleeveU.position.y = -0.13;
+    sh.add(sleeveU);
     const el = new THREE.Group(); el.position.y = -0.27; sh.add(el);
     J['el'+side] = el;
-    const farm = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.052, 0.20, 12), skin));
-    farm.position.y = -0.11;
-    el.add(farm);
-    const hand = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.048, 10, 8), skinD));
-    hand.position.y = -0.25; hand.scale.set(0.85, 1.1, 0.95);
+    const elbow = S(new THREE.Mesh(new THREE.SphereGeometry(0.060, 14, 10), gi));
+    el.add(elbow);
+    const sleeveL = S(new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.066, 0.16, 14), gi));
+    sleeveL.position.y = -0.10;
+    el.add(sleeveL);
+    const cuff = S(new THREE.Mesh(new THREE.CylinderGeometry(0.067, 0.067, 0.035, 14), giEdge));
+    cuff.position.y = -0.185;
+    el.add(cuff);
+    const hand = S(new THREE.Mesh(new THREE.SphereGeometry(0.046, 12, 10), skin));
+    hand.position.y = -0.235; hand.scale.set(0.82, 1.05, 0.9);
     el.add(hand);
-    const fingers = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.05), skinD));
-    fingers.position.set(0, -0.29, 0.012);
+    const fingers = S(new THREE.Mesh(new THREE.SphereGeometry(0.040, 10, 8), skin));
+    fingers.position.set(0, -0.275, 0.012);
+    fingers.scale.set(0.95, 0.8, 1.0);
     el.add(fingers);
   }
 
-  // ── ноги: голые бёдра/голени, штанины шорт, наколенники ──
+  // ── ноги: штаны ги, манжеты на щиколотках, босые ступни ──
   for (const [side, sgn] of [['L',-1],['R',1]]) {
     const hip = new THREE.Group(); hip.position.set(sgn*0.10, -0.05, 0); root.add(hip);
     J['hip'+side] = hip;
-    const shortLeg = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.094, 0.099, 0.16, 12), shortsM));
-    shortLeg.position.y = -0.09;
-    hip.add(shortLeg);
-    const legTrim = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.099, 0.101, 0.03, 12), trimM));
-    legTrim.position.y = -0.165;
-    hip.add(legTrim);
-    const thigh = shadowify(new THREE.Mesh(new THREE.CapsuleGeometry(0.078, 0.22, 6, 12), skin));
-    thigh.position.y = -0.19;
-    hip.add(thigh);
+    const pantU = S(new THREE.Mesh(new THREE.CylinderGeometry(0.080, 0.084, 0.30, 14), gi));
+    pantU.position.y = -0.185;
+    hip.add(pantU);
+    const hipBall = S(new THREE.Mesh(new THREE.SphereGeometry(0.082, 14, 10), gi));
+    hip.add(hipBall);
     const knee = new THREE.Group(); knee.position.y = -0.38; hip.add(knee);
     J['knee'+side] = knee;
-    // наколенник
-    const pad = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.062, 0.11, 12), padM));
-    pad.position.y = -0.02;
-    knee.add(pad);
-    const shin = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.058, 0.22, 12), skin));
-    shin.position.y = -0.17;
-    knee.add(shin);
-    const calf = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.046, 12, 10), skin));
-    calf.position.set(0, -0.135, -0.022);
-    calf.scale.set(0.9, 1.35, 0.9);
-    knee.add(calf);
-    const foot = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.055, 0.19), skinD));
-    foot.position.set(0, -0.30, 0.045);
+    const kneeBall = S(new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 10), gi));
+    knee.add(kneeBall);
+    const pantL = S(new THREE.Mesh(new THREE.CylinderGeometry(0.070, 0.075, 0.22, 14), gi));
+    pantL.position.y = -0.14;
+    knee.add(pantL);
+    const cuff = S(new THREE.Mesh(new THREE.CylinderGeometry(0.076, 0.076, 0.035, 14), giEdge));
+    cuff.position.y = -0.255;
+    knee.add(cuff);
+    const ankle = S(new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.042, 0.05, 10), skin));
+    ankle.position.y = -0.29;
+    knee.add(ankle);
+    const foot = S(new THREE.Mesh(new THREE.SphereGeometry(0.052, 12, 10), skin));
+    foot.position.set(0, -0.325, 0.05);
+    foot.scale.set(0.85, 0.55, 1.75);
     knee.add(foot);
-    const toes = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.045, 0.05), skinD));
-    toes.position.set(0, -0.305, 0.15);
-    knee.add(toes);
   }
 
   scene.add(root);
   return J;
 }
 
-const YOU = makeFighter({ skin:0xd9995f, shorts:0x1c50b8, trim:0xe8edf5,
+const YOU = makeFighter({ gi:0x2455b4, giEdge:0x193e85, skin:0xdb9c63, belt:0x17181d,
   hair:'full', hairColor:0x2e2018, beard:false });
 let FOE = null;
 function spawnFoe() {
@@ -1039,15 +1009,15 @@ function spawnFoe() {
   const d = DIFFS[G.diff];
   const skins = [0xe8b077, 0xc68642, 0x8d5524];
   FOE = makeFighter({
-    skin: skins[G.diff],
-    shorts: 0x191a20,
-    trim: d.belt,
-    hair: d.hair==='bald' ? 'bald' : 'full',
-    hairColor: d.hair==='blond' ? 0xc9a227 : 0x14100c,
-    beard: d.hair==='bald',
+    gi:0xf1f1ea, giEdge:0xd8d8ce, skin:skins[G.diff],
+    belt:d.belt,
+    hair:d.hair==='bald' ? 'bald' : 'full',
+    hairColor:d.hair==='blond' ? 0xc9a227 : 0x14100c,
+    beard:d.hair==='bald',
   });
 }
 spawnFoe();
+
 
 /* ── Позы ──
    Суставы: spine, neck, shL/R (плечи), elL/R (локти), hipL/R (бёдра), kneeL/R (колени).
