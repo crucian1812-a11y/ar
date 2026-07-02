@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0e1420">
+<title>BJJ: Царь Татами</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; background:#0e1420; color:#e8edf5;
+    font-family:'Segoe UI', Roboto, Arial, sans-serif; touch-action:manipulation;
+    user-select:none; -webkit-user-select:none; }
+  #app { height:100%; display:flex; flex-direction:column; max-width:560px; margin:0 auto; position:relative; }
+
+  /* ── Табло ── */
+  #scoreboard { display:flex; align-items:stretch; gap:6px; padding:8px 10px 4px; }
+  .corner { flex:1; border-radius:10px; padding:6px 10px; position:relative; overflow:hidden; }
+  .corner.you { background:linear-gradient(135deg,#123a6e,#1b56a0); text-align:left; }
+  .corner.foe { background:linear-gradient(225deg,#5c5c66,#3a3a42); text-align:right; }
+  .corner .name { font-size:11px; opacity:.85; letter-spacing:.5px; }
+  .corner .pts  { font-size:26px; font-weight:800; line-height:1.1; }
+  .corner .adv  { font-size:10px; opacity:.8; }
+  #clockbox { min-width:86px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:#080c14; border-radius:10px; padding:4px 8px; }
+  #clock { font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; color:#ffd54a; }
+  #roundlbl { font-size:10px; opacity:.75; letter-spacing:1px; }
+
+  /* ── Стамина ── */
+  #staminarow { display:flex; gap:6px; padding:4px 10px; }
+  .stambar { flex:1; height:10px; background:#1a2233; border-radius:5px; overflow:hidden; }
+  .stambar > div { height:100%; border-radius:5px; transition:width .25s; }
+  #stamYou > div { background:linear-gradient(90deg,#2f80ed,#56ccf2); width:100%; }
+  #stamFoe > div { background:linear-gradient(270deg,#eb5757,#f2994a); width:100%; float:right; }
+
+  /* ── Ковёр ── */
+  #matwrap { flex:1; position:relative; margin:6px 10px; min-height:0; }
+  canvas { width:100%; height:100%; display:block; border-radius:14px; }
+  #posLabel { position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(8,12,20,.78); padding:4px 14px; border-radius:20px;
+    font-size:13px; font-weight:700; letter-spacing:.5px; white-space:nowrap; }
+  #posLabel .side { font-size:10px; font-weight:600; opacity:.85; display:block; text-align:center; }
+  #log { position:absolute; bottom:8px; left:8px; right:8px; text-align:center;
+    font-size:12px; min-height:16px; color:#cfe3ff; text-shadow:0 1px 3px #000;
+    pointer-events:none; }
+
+  /* ── Кнопки действий ── */
+  #actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:8px 10px calc(12px + env(safe-area-inset-bottom)); }
+  .abtn { border:none; border-radius:12px; padding:13px 8px; font-size:14px; font-weight:700;
+    color:#fff; background:linear-gradient(135deg,#1e4976,#2a6db1); cursor:pointer;
+    box-shadow:0 3px 0 rgba(0,0,0,.35); transition:transform .05s, opacity .2s; }
+  .abtn:active { transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,.35); }
+  .abtn.sub   { background:linear-gradient(135deg,#7a1f3d,#c0392b); }
+  .abtn.def   { background:linear-gradient(135deg,#2d6a4f,#40916c); }
+  .abtn.rest  { background:linear-gradient(135deg,#4a4e69,#6c6f85); }
+  .abtn:disabled { opacity:.38; transform:none; }
+  .abtn small { display:block; font-weight:400; font-size:10px; opacity:.8; margin-top:2px; }
+
+  /* ── Оверлеи ── */
+  .overlay { position:absolute; inset:0; background:rgba(8,12,20,.92); z-index:20;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px; text-align:center; }
+  .hidden { display:none !important; }
+  h1 { font-size:30px; margin-bottom:4px; letter-spacing:1px; }
+  h1 .accent { color:#ffd54a; }
+  .subtitle { opacity:.7; font-size:13px; margin-bottom:24px; }
+  .choice-title { font-size:12px; letter-spacing:1.5px; opacity:.65; margin:14px 0 8px; text-transform:uppercase; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  .chip { border:2px solid #33415c; background:#141c2c; color:#e8edf5; border-radius:12px;
+    padding:10px 16px; font-size:14px; font-weight:700; cursor:pointer; }
+  .chip small { display:block; font-weight:400; font-size:10px; opacity:.7; }
+  .chip.sel { border-color:#ffd54a; background:#2a2410; }
+  .bigbtn { margin-top:26px; border:none; border-radius:14px; padding:16px 46px; font-size:18px;
+    font-weight:800; color:#0e1420; background:linear-gradient(135deg,#ffd54a,#f0a500);
+    cursor:pointer; box-shadow:0 4px 0 #8a6100; letter-spacing:1px; }
+  .bigbtn:active { transform:translateY(3px); box-shadow:0 1px 0 #8a6100; }
+
+  /* ── QTE ── */
+  #qte .qte-name { font-size:22px; font-weight:800; margin-bottom:18px; }
+  #qteTrack { width:min(86vw,420px); height:34px; background:#1a2233; border-radius:17px;
+    position:relative; overflow:hidden; }
+  #qteZone { position:absolute; top:0; bottom:0; background:rgba(64,145,108,.85); }
+  #qteMark { position:absolute; top:-3px; bottom:-3px; width:6px; background:#ffd54a;
+    border-radius:3px; box-shadow:0 0 8px #ffd54a; }
+  #qteHint { margin-top:14px; font-size:13px; opacity:.75; }
+  #qteBtn { margin-top:22px; }
+
+  /* ── Борьба (тап-баттл) ── */
+  #struggle .st-name { font-size:22px; font-weight:800; margin-bottom:6px; }
+  #struggle .st-sub { font-size:13px; opacity:.75; margin-bottom:18px; }
+  #stTrack { width:min(86vw,420px); height:26px; background:#3d1220; border-radius:13px; overflow:hidden; }
+  #stFill { height:100%; width:50%; background:linear-gradient(90deg,#40916c,#74c69d); transition:width .08s linear; }
+  #stTimer { margin-top:10px; font-size:13px; color:#ffd54a; font-variant-numeric:tabular-nums; }
+  #stBtn { margin-top:20px; padding:26px 60px; font-size:22px; border-radius:50px; }
+
+  .resultTitle { font-size:34px; font-weight:900; margin-bottom:8px; }
+  .resultTitle.win  { color:#74c69d; }
+  .resultTitle.lose { color:#eb5757; }
+  .resultTitle.draw { color:#ffd54a; }
+  .resultDetail { font-size:15px; opacity:.85; line-height:1.6; margin-bottom:6px; }
+
+  #flash { position:absolute; inset:0; pointer-events:none; z-index:15; opacity:0; border-radius:14px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="scoreboard">
+    <div class="corner you">
+      <div class="name">ВЫ · СИНИЙ ГИ</div>
+      <div class="pts" id="ptsYou">0</div>
+      <div class="adv" id="advYou">Преим.: 0</div>
+    </div>
+    <div id="clockbox">
+      <div id="clock">2:00</div>
+      <div id="roundlbl">РАУНД 1/3</div>
+    </div>
+    <div class="corner foe">
+      <div class="name" id="foeName">СОПЕРНИК</div>
+      <div class="pts" id="ptsFoe">0</div>
+      <div class="adv" id="advFoe">Преим.: 0</div>
+    </div>
+  </div>
+
+  <div id="staminarow">
+    <div class="stambar" id="stamYou"><div></div></div>
+    <div class="stambar" id="stamFoe"><div></div></div>
+  </div>
+
+  <div id="matwrap">
+    <canvas id="mat"></canvas>
+    <div id="posLabel">Стойка<span class="side"></span></div>
+    <div id="log"></div>
+    <div id="flash"></div>
+  </div>
+
+  <div id="actions"></div>
+
+  <!-- ═══ МЕНЮ ═══ -->
+  <div class="overlay" id="menu">
+    <h1>BJJ: <span class="accent">Царь Татами</span></h1>
+    <div class="subtitle">Бразильское джиу-джитсу · борьба на ковре</div>
+
+    <div class="choice-title">Сложность соперника</div>
+    <div class="chips" id="diffChips">
+      <button class="chip sel" data-v="0">⬜ Белый пояс<small>новичок</small></button>
+      <button class="chip" data-v="1">🟪 Пурпурный<small>опытный</small></button>
+      <button class="chip" data-v="2">⬛ Чёрный пояс<small>мастер</small></button>
+    </div>
+
+    <div class="choice-title">Раунды</div>
+    <div class="chips" id="roundChips">
+      <button class="chip" data-v="1">1</button>
+      <button class="chip sel" data-v="3">3</button>
+      <button class="chip" data-v="5">5</button>
+    </div>
+
+    <div class="choice-title">Длительность раунда</div>
+    <div class="chips" id="timeChips">
+      <button class="chip" data-v="60">1:00</button>
+      <button class="chip sel" data-v="90">1:30</button>
+      <button class="chip" data-v="120">2:00</button>
+    </div>
+
+    <button class="bigbtn" id="btnStart">НА КОВЁР!</button>
+    <div class="subtitle" style="margin-top:18px">Побеждай по очкам (тейкдаун 2 · свип 2 · проход 3 · маунт 4 · спина 4)<br>или финишируй болевым/удушающим. Осс! 🥋</div>
+  </div>
+
+  <!-- ═══ QTE ═══ -->
+  <div class="overlay hidden" id="qte">
+    <div class="qte-name" id="qteName">Тейкдаун</div>
+    <div id="qteTrack"><div id="qteZone"></div><div id="qteMark"></div></div>
+    <div id="qteHint">Жми СТОП, когда маркер в зелёной зоне!</div>
+    <button class="bigbtn" id="qteBtn">СТОП!</button>
+  </div>
+
+  <!-- ═══ Борьба ═══ -->
+  <div class="overlay hidden" id="struggle">
+    <div class="st-name" id="stName">ДОЖИМАЙ!</div>
+    <div class="st-sub" id="stSub">Тапай изо всех сил!</div>
+    <div id="stTrack"><div id="stFill"></div></div>
+    <div id="stTimer">6.0</div>
+    <button class="bigbtn" id="stBtn">ТАП!</button>
+  </div>
+
+  <!-- ═══ Отдых между раундами ═══ -->
+  <div class="overlay hidden" id="rest">
+    <div class="resultTitle draw" id="restTitle">Конец раунда</div>
+    <div class="resultDetail" id="restDetail"></div>
+    <button class="bigbtn" id="btnNextRound">СЛЕДУЮЩИЙ РАУНД</button>
+  </div>
+
+  <!-- ═══ Финал ═══ -->
+  <div class="overlay hidden" id="end">
+    <div class="resultTitle" id="endTitle">ПОБЕДА!</div>
+    <div class="resultDetail" id="endDetail"></div>
+    <button class="bigbtn" id="btnAgain">ЕЩЁ БОЙ</button>
+    <button class="bigbtn" id="btnMenu" style="background:linear-gradient(135deg,#6c6f85,#4a4e69); box-shadow:0 4px 0 #2c2e3d; color:#fff; margin-top:12px;">В МЕНЮ</button>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+/* ═══════════════════════════ УТИЛИТЫ ═══════════════════════════ */
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const rnd = (a,b) => a + Math.random()*(b-a);
+const pick = arr => arr[Math.floor(Math.random()*arr.length)];
+
+/* Простые звуки через WebAudio */
+let actx = null;
+function beep(freq, dur=0.08, type='square', vol=0.12) {
+  try {
+    if (!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  } catch(e){}
+}
+const sndOk   = () => { beep(660,.07); setTimeout(()=>beep(880,.1),70); };
+const sndFail = () => beep(160,.18,'sawtooth');
+const sndTap  = () => beep(440,.03,'square',.06);
+const sndBell = () => { beep(1200,.4,'sine',.2); setTimeout(()=>beep(900,.5,'sine',.15),120); };
+const sndSub  = () => { beep(523,.1); setTimeout(()=>beep(659,.1),100); setTimeout(()=>beep(784,.25),200); };
+
+/* ═══════════════════════════ СЛОЖНОСТЬ ═══════════════════════════ */
+const DIFFS = [
+  { name:'БЕЛЫЙ ПОЯС',    belt:'#f5f5f5', aiMin:6.0, aiMax:9.0, aiChance:0.70, zone:0.34, speed:0.90, drain:14, tap:6.0, defStart:55, atkStart:55, aiRegen:2.2 },
+  { name:'ПУРПУРНЫЙ ПОЯС',belt:'#8e44ad', aiMin:4.5, aiMax:7.0, aiChance:1.00, zone:0.26, speed:1.15, drain:20, tap:5.0, defStart:48, atkStart:50, aiRegen:3.0 },
+  { name:'ЧЁРНЫЙ ПОЯС',   belt:'#111111', aiMin:3.0, aiMax:5.0, aiChance:1.30, zone:0.19, speed:1.40, drain:27, tap:4.2, defStart:40, atkStart:45, aiRegen:3.8 },
+];
+
+/* ═══════════════════════════ ПОЗИЦИИ ═══════════════════════════
+   Все позиции — с точки зрения игрока. */
+const POSITIONS = {
+  standing:     { label:'Стойка',            side:'нейтрально' },
+  guard_top:    { label:'Гвард соперника',   side:'вы сверху' },
+  guard_bottom: { label:'Ваш гвард',         side:'вы снизу' },
+  side_top:     { label:'Боковой контроль',  side:'вы сверху' },
+  side_bottom:  { label:'Боковой контроль',  side:'вы снизу' },
+  mount_top:    { label:'Маунт',             side:'вы сверху' },
+  mount_bottom: { label:'Маунт соперника',   side:'вы снизу' },
+  back_top:     { label:'Спина взята!',      side:'вы контролируете' },
+  back_bottom:  { label:'Соперник на спине', side:'опасно!' },
+};
+
+/* Действия игрока: chance — базовый шанс (до QTE), cost — стамина,
+   pts — очки, to — новая позиция, sub — сабмишн */
+const PLAYER_ACTIONS = {
+  standing: [
+    { id:'td',   name:'Тейкдаун', hint:'проход в ноги · +2', chance:.60, cost:18, pts:2, to:'guard_top' },
+    { id:'pull', name:'Затянуть в гвард', hint:'без очков', chance:.92, cost:8,  pts:0, to:'guard_bottom' },
+  ],
+  guard_top: [
+    { id:'passK', name:'Проход через колено', hint:'+3', chance:.55, cost:18, pts:3, to:'side_top' },
+    { id:'passS', name:'Стек-проход', hint:'мощно · +3', chance:.45, cost:24, pts:3, to:'side_top' },
+  ],
+  guard_bottom: [
+    { id:'sweepS', name:'Свип-ножницы', hint:'+2, вы сверху', chance:.55, cost:18, pts:2, to:'guard_top' },
+    { id:'sweepF', name:'Флауэр-свип', hint:'риск · +2 и маунт!', chance:.38, cost:24, pts:2, to:'mount_top' },
+    { id:'tri',    name:'Треугольник', hint:'удушающий', chance:.48, cost:22, sub:'треугольником', cls:'sub' },
+    { id:'arm',    name:'Армбар', hint:'болевой на руку', chance:.44, cost:22, sub:'армбаром', cls:'sub' },
+  ],
+  side_top: [
+    { id:'mnt', name:'Выход в маунт', hint:'+4', chance:.55, cost:18, pts:4, to:'mount_top' },
+    { id:'kim', name:'Кимура', hint:'болевой на плечо', chance:.48, cost:20, sub:'кимурой', cls:'sub' },
+  ],
+  side_bottom: [
+    { id:'rec', name:'Вернуть гвард', hint:'закрыть ноги', chance:.60, cost:15, pts:0, to:'guard_bottom' },
+    { id:'brg', name:'Мост и выход', hint:'в стойку', chance:.42, cost:20, pts:0, to:'standing' },
+  ],
+  mount_top: [
+    { id:'armM', name:'Армбар', hint:'болевой', chance:.52, cost:20, sub:'армбаром', cls:'sub' },
+    { id:'chk',  name:'Крест', hint:'удушающий воротом', chance:.48, cost:20, sub:'удушением "крест"', cls:'sub' },
+    { id:'back', name:'Забрать спину', hint:'+4', chance:.48, cost:15, pts:4, to:'back_top' },
+  ],
+  mount_bottom: [
+    { id:'upa', name:'Упа (переворот)', hint:'мост — вы сверху!', chance:.48, cost:22, pts:0, to:'guard_top' },
+    { id:'elb', name:'Локти-колени', hint:'вернуть гвард', chance:.58, cost:15, pts:0, to:'guard_bottom' },
+  ],
+  back_top: [
+    { id:'rnc',  name:'Мата-леон', hint:'удушающий сзади', chance:.58, cost:20, sub:'мата-леоном', cls:'sub' },
+    { id:'hold', name:'Держать крюки', hint:'+выносливость', chance:1, cost:0, restore:22, cls:'rest' },
+  ],
+  back_bottom: [
+    { id:'strip', name:'Снять крюки', hint:'уйти в гвард', chance:.48, cost:18, pts:0, to:'guard_bottom' },
+    { id:'wall',  name:'Защита шеи', hint:'+выносливость', chance:1, cost:0, restore:16, cls:'rest' },
+  ],
+};
+
+/* Действия ИИ по текущей позиции игрока */
+const AI_ACTIONS = {
+  standing: [
+    { w:5, name:'тейкдаун', chance:.42, pts:2, to:'guard_bottom', msg:'Соперник прошёл в ноги — тейкдаун!' },
+    { w:2, name:'затягивание', chance:.80, pts:0, to:'guard_top', msg:'Соперник затянул вас в свой гвард.' },
+  ],
+  guard_top: [
+    { w:4, name:'свип', chance:.40, pts:2, to:'guard_bottom', msg:'Соперник сделал свип — вы снизу!' },
+    { w:3, name:'треугольник', chance:.38, sub:'треугольник', msg:'Соперник ловит треугольник!' },
+  ],
+  guard_bottom: [
+    { w:5, name:'проход гварда', chance:.42, pts:3, to:'side_bottom', msg:'Соперник прошёл ваш гвард! +3' },
+  ],
+  side_top: [
+    { w:4, name:'возврат гварда', chance:.45, pts:0, to:'guard_top', msg:'Соперник вернул гвард.' },
+    { w:2, name:'уход в стойку', chance:.35, pts:0, to:'standing', msg:'Соперник вскочил в стойку.' },
+  ],
+  side_bottom: [
+    { w:4, name:'выход в маунт', chance:.40, pts:4, to:'mount_bottom', msg:'Соперник вышел в маунт! +4' },
+    { w:3, name:'кимура', chance:.36, sub:'кимуру', msg:'Соперник крутит кимуру!' },
+  ],
+  mount_top: [
+    { w:4, name:'упа', chance:.40, pts:0, to:'guard_bottom', msg:'Соперник перевернул вас мостом!' },
+    { w:3, name:'локти-колени', chance:.45, pts:0, to:'guard_top', msg:'Соперник вернул гвард.' },
+  ],
+  mount_bottom: [
+    { w:4, name:'армбар', chance:.42, sub:'армбар', msg:'Соперник выходит на армбар!' },
+    { w:4, name:'удушение', chance:.42, sub:'удушение', msg:'Соперник давит удушающий!' },
+  ],
+  back_top: [
+    { w:4, name:'выход со спины', chance:.38, pts:0, to:'side_top', msg:'Соперник слез со спины, но вы удержали контроль сверху.' },
+  ],
+  back_bottom: [
+    { w:5, name:'мата-леон', chance:.50, sub:'мата-леон', msg:'Соперник затягивает мата-леон!!' },
+  ],
+};
+
+/* ═══════════════════════════ СОСТОЯНИЕ ═══════════════════════════ */
+const G = {
+  screen:'menu',          // menu | fight | qte | struggle | rest | end
+  diff:0, totalRounds:3, roundTime:90,
+  round:1, clock:90,
+  pos:'standing',
+  ptsYou:0, ptsFoe:0, advYou:0, advFoe:0,
+  stamYou:100, stamFoe:100,
+  defUntil:0, defCooldown:0,   // защитная стойка
+  aiTimer:5,
+  paused:true,
+  time:0,
+};
+
+let qteState = null;   // { action, t, dir, zoneStart, zoneW }
+let stState = null;    // { mode:'attack'|'defense', fill, timeLeft, subName, aiAct }
+
+/* ═══════════════════════════ DOM / UI ═══════════════════════════ */
+const cv = $('mat'), ctx = cv.getContext('2d');
+
+function setLog(msg, color) {
+  const el = $('log');
+  el.textContent = msg;
+  el.style.color = color || '#cfe3ff';
+}
+function flash(color) {
+  const f = $('flash');
+  f.style.background = color;
+  f.style.transition = 'none'; f.style.opacity = .45;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    f.style.transition = 'opacity .5s'; f.style.opacity = 0;
+  }));
+}
+function fmtClock(s) {
+  s = Math.max(0, Math.ceil(s));
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}
+function updateHUD() {
+  $('ptsYou').textContent = G.ptsYou;
+  $('ptsFoe').textContent = G.ptsFoe;
+  $('advYou').textContent = 'Преим.: ' + G.advYou;
+  $('advFoe').textContent = 'Преим.: ' + G.advFoe;
+  $('clock').textContent = fmtClock(G.clock);
+  $('roundlbl').textContent = 'РАУНД ' + G.round + '/' + G.totalRounds;
+  $('stamYou').firstElementChild.style.width = G.stamYou + '%';
+  $('stamFoe').firstElementChild.style.width = G.stamFoe + '%';
+  const p = POSITIONS[G.pos];
+  $('posLabel').innerHTML = p.label + '<span class="side">' + p.side + '</span>';
+}
+
+let actionButtons = [];   // {btn, a, isDef}
+let renderedPos = null;
+function renderActions(force) {
+  if (!force && renderedPos === G.pos) { updateActionButtons(); return; }
+  renderedPos = G.pos;
+  const box = $('actions');
+  box.innerHTML = '';
+  actionButtons = [];
+  const acts = PLAYER_ACTIONS[G.pos] || [];
+  for (const a of acts) {
+    const b = document.createElement('button');
+    b.className = 'abtn' + (a.cls ? ' ' + a.cls : '');
+    b.innerHTML = a.name + '<small>' + a.hint + '</small>';
+    b.onclick = () => playerAction(a);
+    box.appendChild(b);
+    actionButtons.push({btn:b, a, isDef:false});
+  }
+  // Кнопка защиты — всегда
+  const d = document.createElement('button');
+  d.className = 'abtn def';
+  d.innerHTML = 'Защита 🛡<small></small>';
+  d.onclick = () => {
+    G.stamYou = clamp(G.stamYou - 8, 0, 100);
+    G.defUntil = G.time + 4;
+    G.defCooldown = G.time + 9;
+    setLog('Вы в глухой защите: хват сбит, атаки соперника слабее.', '#74c69d');
+    sndTap();
+    updateActionButtons();
+  };
+  box.appendChild(d);
+  actionButtons.push({btn:d, a:null, isDef:true});
+  updateActionButtons();
+}
+function updateActionButtons() {
+  for (const it of actionButtons) {
+    if (it.isDef) {
+      const onCd = G.time < G.defCooldown;
+      it.btn.disabled = onCd || G.stamYou < 8;
+      it.btn.querySelector('small').textContent = onCd ? 'перезарядка…' : 'сбить атаку · 4 сек';
+    } else {
+      it.btn.disabled = G.stamYou < it.a.cost;
+    }
+  }
+}
+
+/* ═══════════════════════════ ДЕЙСТВИЯ ИГРОКА ═══════════════════════════ */
+function playerAction(a) {
+  if (G.screen !== 'fight') return;
+  if (a.restore) { // отдых
+    G.stamYou = clamp(G.stamYou + a.restore, 0, 100);
+    setLog('Вы контролируете позицию и восстанавливаете дыхание…', '#9ad1ff');
+    sndTap(); renderActions(); return;
+  }
+  G.stamYou = clamp(G.stamYou - a.cost, 0, 100);
+  openQTE(a);
+}
+
+/* ── QTE: тайминг-бар ── */
+function openQTE(action) {
+  G.screen = 'qte';
+  const d = DIFFS[G.diff];
+  // зона тем шире, чем выше базовый шанс приёма и текущая стамина
+  const stamF = 0.7 + 0.3 * (G.stamYou/100);
+  const zoneW = clamp(d.zone * (0.6 + action.chance) * stamF, 0.10, 0.5);
+  qteState = {
+    action, t: Math.random(), dir: 1,
+    speed: d.speed * rnd(.95,1.1),
+    zoneStart: rnd(0.12, 0.88 - zoneW), zoneW,
+  };
+  $('qteName').textContent = action.name;
+  $('qteZone').style.left = (qteState.zoneStart*100) + '%';
+  $('qteZone').style.width = (zoneW*100) + '%';
+  $('qte').classList.remove('hidden');
+}
+function closeQTE() { $('qte').classList.add('hidden'); qteState = null; }
+
+$('qteBtn').addEventListener('click', () => {
+  if (!qteState) return;
+  const q = qteState, a = q.action;
+  const hit = q.t >= q.zoneStart && q.t <= q.zoneStart + q.zoneW;
+  closeQTE();
+  G.screen = 'fight';
+  if (hit) {
+    if (a.sub) { sndOk(); startStruggle('attack', a); return; }
+    // приём прошёл
+    applyPlayerSuccess(a);
+  } else {
+    sndFail(); flash('#c0392b');
+    setLog('Мимо! ' + a.name + ' не прошёл — соперник защитился.', '#ff9d9d');
+    G.stamFoe = clamp(G.stamFoe - 4, 0, 100); // защита тоже стоит сил
+  }
+  renderActions(); updateHUD();
+});
+
+function applyPlayerSuccess(a) {
+  sndOk(); flash('#2ecc71');
+  if (a.pts) G.ptsYou += a.pts;
+  if (a.to) G.pos = a.to;
+  const msgs = {
+    td:'Отличный тейкдаун! +2 очка.', pull:'Вы затянули соперника в закрытый гвард.',
+    passK:'Гвард пройден через колено! +3.', passS:'Стек-проход! Гвард смят. +3.',
+    sweepS:'Свип-ножницы! Вы сверху. +2.', sweepF:'Флауэр-свип прямо в маунт! +2.',
+    mnt:'Вы вышли в маунт! +4 очка.', rec:'Гвард восстановлен — вы в безопасности.',
+    brg:'Мост, разворот — вы вырвались в стойку!', upa:'УПА! Переворот — теперь вы сверху!',
+    elb:'Локти-колени: гвард возвращён.', back:'Спина взята, крюки в деле! +4.',
+    strip:'Крюки сняты! Вы ушли в гвард.',
+  };
+  setLog(msgs[a.id] || (a.name + ' — успех!'), '#9dffb0');
+  renderActions(); updateHUD();
+}
+
+/* ═══════════════════════════ БОРЬБА (тап-баттл) ═══════════════════════════ */
+function startStruggle(mode, action, aiAct) {
+  G.screen = 'struggle';
+  const d = DIFFS[G.diff];
+  const defBonus = (mode==='defense' && G.time < G.defUntil) ? 14 : 0;
+  stState = {
+    mode,
+    fill: (mode==='attack' ? d.atkStart : d.defStart + defBonus),
+    timeLeft: 6,
+    subName: action ? action.sub : (aiAct ? aiAct.sub : ''),
+    aiAct,
+  };
+  if (mode === 'attack') {
+    $('stName').textContent = '🔥 ДОЖИМАЙ ' + stState.subName.toUpperCase() + '!';
+    $('stSub').textContent = 'Тапай, чтобы дожать до того, как соперник вырвется!';
+    $('stBtn').textContent = 'ДОЖАТЬ!';
+  } else {
+    $('stName').textContent = '⚠️ ЗАЩИЩАЙСЯ: ' + stState.subName.toUpperCase() + '!';
+    $('stSub').textContent = 'Тапай, чтобы вырваться, пока не задушили!';
+    $('stBtn').textContent = 'ВЫРВАТЬСЯ!';
+  }
+  updateStruggleUI();
+  $('struggle').classList.remove('hidden');
+}
+function updateStruggleUI() {
+  $('stFill').style.width = clamp(stState.fill,0,100) + '%';
+  $('stTimer').textContent = stState.timeLeft.toFixed(1);
+}
+$('stBtn').addEventListener('click', () => {
+  if (!stState) return;
+  const d = DIFFS[G.diff];
+  const stamF = 0.7 + 0.3 * (G.stamYou/100);
+  stState.fill += d.tap * stamF;
+  sndTap();
+  if (stState.fill >= 100) finishStruggle(true);
+  else updateStruggleUI();
+});
+function finishStruggle(playerWon) {
+  const st = stState; stState = null;
+  $('struggle').classList.add('hidden');
+  G.screen = 'fight';
+  G.stamYou = clamp(G.stamYou - 10, 0, 100);
+  G.stamFoe = clamp(G.stamFoe - 10, 0, 100);
+  if (st.mode === 'attack') {
+    if (playerWon) { endMatch('you', 'Победа ' + st.subName + '! Соперник постучал. 🥋'); return; }
+    G.advYou++;
+    sndFail(); flash('#f0a500');
+    setLog('Соперник вырвался из ' + st.subName + '… но вы получили преимущество!', '#ffd54a');
+  } else {
+    if (playerWon) {
+      sndOk(); flash('#2ecc71');
+      G.advFoe++;
+      setLog('Вы вырвались! Соперник получил преимущество за попытку.', '#9dffb0');
+    } else {
+      endMatch('foe', 'Соперник провёл ' + st.subName + '. Вы постучали…'); return;
+    }
+  }
+  renderActions(); updateHUD();
+}
+
+/* ═══════════════════════════ ИИ ═══════════════════════════ */
+function aiAct() {
+  const d = DIFFS[G.diff];
+  const acts = AI_ACTIONS[G.pos];
+  if (!acts || !acts.length) return;
+  // взвешенный выбор
+  const total = acts.reduce((s,a)=>s+a.w,0);
+  let r = Math.random()*total, chosen = acts[0];
+  for (const a of acts) { r -= a.w; if (r <= 0) { chosen = a; break; } }
+
+  if (G.stamFoe < 15) { // ИИ выдохся — отдыхает
+    G.stamFoe = clamp(G.stamFoe + 18, 0, 100);
+    setLog('Соперник тяжело дышит и держит позицию…', '#c9c9c9');
+    return;
+  }
+  G.stamFoe = clamp(G.stamFoe - 14, 0, 100);
+
+  const stamF = 0.7 + 0.3*(G.stamFoe/100);
+  let chance = chosen.chance * d.aiChance * stamF;
+  if (G.time < G.defUntil) chance *= 0.45;   // игрок в защите
+  chance = clamp(chance, .05, .9);
+
+  if (chosen.sub) {
+    // сабмишн — всегда борьба, но при провале броска попытка срывается
+    if (Math.random() < chance) { sndFail(); startStruggle('defense', null, chosen); setLog(chosen.msg, '#ff9d9d'); }
+    else setLog('Соперник попытался поймать ' + chosen.sub + ', но вы вовремя убрали руки.', '#cfe3ff');
+    return;
+  }
+  if (Math.random() < chance) {
+    if (chosen.pts) G.ptsFoe += chosen.pts;
+    G.pos = chosen.to;
+    sndFail(); flash('#e67e22');
+    setLog(chosen.msg, '#ffbf8f');
+    renderActions();
+  } else {
+    setLog('Соперник пробует ' + chosen.name + ' — вы защитились!', '#cfe3ff');
+  }
+  updateHUD();
+}
+
+/* ═══════════════════════════ МАТЧ / РАУНДЫ ═══════════════════════════ */
+function startMatch() {
+  G.ptsYou = 0; G.ptsFoe = 0; G.advYou = 0; G.advFoe = 0;
+  G.round = 1;
+  startRound();
+}
+function startRound() {
+  G.pos = 'standing';
+  G.clock = G.roundTime;
+  if (G.round === 1) { G.stamYou = 100; G.stamFoe = 100; }
+  else G.stamFoe = clamp(G.stamFoe + 45, 0, 100);
+  G.defUntil = 0; G.defCooldown = 0;
+  G.aiTimer = rnd(DIFFS[G.diff].aiMin, DIFFS[G.diff].aiMax);
+  G.screen = 'fight';
+  ['menu','rest','end','qte','struggle'].forEach(id=>$(id).classList.add('hidden'));
+  setLog('Раунд ' + G.round + '. Пожали руки — боремся! Осс!', '#ffd54a');
+  sndBell();
+  renderActions(); updateHUD();
+}
+function endRound() {
+  sndBell();
+  closeQTE();
+  if (stState) { $('struggle').classList.add('hidden'); stState = null; }
+  if (G.round >= G.totalRounds) { finalResult(); return; }
+  G.screen = 'rest';
+  G.round++;
+  G.stamYou = clamp(G.stamYou + 45, 0, 100);
+  $('restTitle').textContent = 'Конец раунда ' + (G.round-1);
+  $('restDetail').innerHTML =
+    'Счёт: <b>' + G.ptsYou + ' : ' + G.ptsFoe + '</b> (преим. ' + G.advYou + ':' + G.advFoe + ')<br>' +
+    (G.ptsYou > G.ptsFoe ? 'Вы ведёте — так держать!' :
+     G.ptsYou < G.ptsFoe ? 'Вы отстаёте — нужен проход или сабмишн!' :
+     'Равный бой. Решает следующий раунд!') +
+    '<br>Передышка: выносливость частично восстановлена.';
+  $('rest').classList.remove('hidden');
+}
+function finalResult() {
+  let winner, why;
+  if (G.ptsYou !== G.ptsFoe) {
+    winner = G.ptsYou > G.ptsFoe ? 'you' : 'foe';
+    why = 'по очкам ' + G.ptsYou + ':' + G.ptsFoe;
+  } else if (G.advYou !== G.advFoe) {
+    winner = G.advYou > G.advFoe ? 'you' : 'foe';
+    why = 'по преимуществам ' + G.advYou + ':' + G.advFoe + ' (очки ' + G.ptsYou + ':' + G.ptsFoe + ')';
+  } else { winner = 'draw'; why = 'абсолютно равный бой ' + G.ptsYou + ':' + G.ptsFoe; }
+  endMatch(winner, winner==='draw' ? 'Ничья — ' + why : 'Победа ' + why + '.');
+}
+function endMatch(winner, detail) {
+  G.screen = 'end';
+  closeQTE();
+  if (stState) { $('struggle').classList.add('hidden'); stState = null; }
+  const t = $('endTitle');
+  if (winner === 'you') { t.textContent = '🏆 ПОБЕДА!'; t.className = 'resultTitle win'; sndSub(); }
+  else if (winner === 'foe') { t.textContent = 'ПОРАЖЕНИЕ'; t.className = 'resultTitle lose'; sndFail(); }
+  else { t.textContent = '🤝 НИЧЬЯ'; t.className = 'resultTitle draw'; sndBell(); }
+  $('endDetail').innerHTML = detail + '<br>Соперник: ' + DIFFS[G.diff].name +
+    ' · раундов: ' + G.totalRounds;
+  $('end').classList.remove('hidden');
+}
+
+/* ═══════════════════════════ ГЛАВНЫЙ ЦИКЛ ═══════════════════════════ */
+let lastT = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastT)/1000);
+  lastT = now;
+  G.time += dt;
+
+  if (G.screen === 'fight') {
+    G.clock -= dt;
+    // регенерация выносливости (в защите дышится легче)
+    const regen = G.time < G.defUntil ? 4.5 : 2.8;
+    G.stamYou = clamp(G.stamYou + regen*dt, 0, 100);
+    G.stamFoe = clamp(G.stamFoe + DIFFS[G.diff].aiRegen*dt, 0, 100);
+    G.aiTimer -= dt;
+    if (G.aiTimer <= 0) {
+      aiAct();
+      G.aiTimer = rnd(DIFFS[G.diff].aiMin, DIFFS[G.diff].aiMax);
+    }
+    if (G.clock <= 0) endRound();
+    updateActionButtons();
+    updateHUD();
+  }
+  else if (G.screen === 'qte' && qteState) {
+    const q = qteState;
+    q.t += q.dir * q.speed * dt;
+    if (q.t > 1) { q.t = 1; q.dir = -1; }
+    if (q.t < 0) { q.t = 0; q.dir = 1; }
+    $('qteMark').style.left = 'calc(' + (q.t*100) + '% - 3px)';
+    G.clock -= dt*0.5; // время немного идёт
+  }
+  else if (G.screen === 'struggle' && stState) {
+    stState.timeLeft -= dt;
+    stState.fill -= DIFFS[G.diff].drain * dt;
+    if (stState.fill <= 0) finishStruggle(false);
+    else if (stState.timeLeft <= 0) {
+      // время вышло: атака сорвалась / вы выжили в защите
+      if (stState.mode === 'attack') finishStruggle(false);
+      else finishStruggle(true);
+    }
+    else updateStruggleUI();
+  }
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* ═══════════════════════════ ОТРИСОВКА ═══════════════════════════ */
+function resize() {
+  const r = cv.parentElement.getBoundingClientRect();
+  cv.width = r.width * devicePixelRatio;
+  cv.height = r.height * devicePixelRatio;
+}
+window.addEventListener('resize', resize);
+
+function drawFighter(x, y, rot, opts) {
+  // opts: {gi, belt, scale, pose:'stand'|'kneel'|'lyingBack'|'lyingFace', legsUp, armsFwd}
+  const s = opts.scale || 1;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.scale(s, s);
+  ctx.lineCap = 'round';
+
+  const gi = opts.gi, skin = '#e0ac69';
+  // ноги
+  ctx.strokeStyle = gi; ctx.lineWidth = 13;
+  if (opts.pose === 'lyingBack' && opts.legsUp) {
+    ctx.beginPath(); ctx.moveTo(-8, 12); ctx.quadraticCurveTo(-26, 38, -12, 52); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8, 12);  ctx.quadraticCurveTo(26, 38, 12, 52); ctx.stroke();
+  } else if (opts.pose === 'kneel') {
+    ctx.beginPath(); ctx.moveTo(-9, 14); ctx.lineTo(-22, 34); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(9, 14);  ctx.lineTo(22, 34); ctx.stroke();
+  } else if (opts.pose === 'stand') {
+    ctx.beginPath(); ctx.moveTo(-8, 14); ctx.lineTo(-13, 40); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8, 14);  ctx.lineTo(13, 40); ctx.stroke();
+  } else { // lying flat
+    ctx.beginPath(); ctx.moveTo(-8, 14); ctx.lineTo(-11, 46); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8, 14);  ctx.lineTo(11, 46); ctx.stroke();
+  }
+  // торс
+  ctx.fillStyle = gi;
+  ctx.beginPath(); ctx.ellipse(0, 0, 17, 22, 0, 0, Math.PI*2); ctx.fill();
+  // пояс
+  ctx.strokeStyle = opts.belt; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(-15, 8); ctx.lineTo(15, 8); ctx.stroke();
+  // руки
+  ctx.strokeStyle = gi; ctx.lineWidth = 10;
+  const ax = opts.armsFwd ? 26 : 20, ay = opts.armsFwd ? -26 : -2;
+  ctx.beginPath(); ctx.moveTo(-12, -8); ctx.lineTo(-ax, ay); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(12, -8);  ctx.lineTo(ax, ay);  ctx.stroke();
+  // кисти
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.arc(-ax, ay, 5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(ax, ay, 5, 0, Math.PI*2); ctx.fill();
+  // голова
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.arc(0, -30, 11, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = opts.hair || '#3a2a1a';
+  ctx.beginPath(); ctx.arc(0, -32, 10, Math.PI, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+/* Раскладка сцены для каждой позиции: [боец-вы, боец-соперник] */
+function sceneFor(pos, w, h, t) {
+  const cx = w/2, cy = h/2 + h*0.03;
+  const bob = Math.sin(t*2.2)*3, bob2 = Math.cos(t*1.9)*3;
+  const YOU = { gi:'#2f80ed', belt:'#1544a0', hair:'#2b1c10' };
+  const FOE = { gi:'#f2f2f2', belt:DIFFS[G.diff].belt, hair:'#101010' };
+  const S = [];
+  const push = (f, x,y,rot,extra) => S.push(Object.assign({x,y,rot}, f, extra));
+  switch(pos) {
+    case 'standing':
+      push(YOU, cx-58+bob, cy, Math.PI/2, {pose:'stand', armsFwd:true});
+      push(FOE, cx+58+bob2, cy, -Math.PI/2, {pose:'stand', armsFwd:true});
+      break;
+    case 'guard_top':
+      push(FOE, cx, cy-6+bob2, Math.PI, {pose:'lyingBack', legsUp:true, scale:1.15});
+      push(YOU, cx, cy+30+bob, 0, {pose:'kneel', armsFwd:true});
+      break;
+    case 'guard_bottom':
+      push(YOU, cx, cy-6+bob, Math.PI, {pose:'lyingBack', legsUp:true, scale:1.15});
+      push(FOE, cx, cy+30+bob2, 0, {pose:'kneel', armsFwd:true});
+      break;
+    case 'side_top':
+      push(FOE, cx, cy+bob2, Math.PI, {pose:'lyingFace', scale:1.15});
+      push(YOU, cx+6, cy-6+bob, Math.PI/2, {pose:'kneel', armsFwd:true});
+      break;
+    case 'side_bottom':
+      push(YOU, cx, cy+bob, Math.PI, {pose:'lyingFace', scale:1.15});
+      push(FOE, cx+6, cy-6+bob2, Math.PI/2, {pose:'kneel', armsFwd:true});
+      break;
+    case 'mount_top':
+      push(FOE, cx, cy+bob2, Math.PI, {pose:'lyingFace', scale:1.2});
+      push(YOU, cx, cy-4+bob, 0, {pose:'kneel', armsFwd:true, scale:.95});
+      break;
+    case 'mount_bottom':
+      push(YOU, cx, cy+bob, Math.PI, {pose:'lyingFace', scale:1.2});
+      push(FOE, cx, cy-4+bob2, 0, {pose:'kneel', armsFwd:true, scale:.95});
+      break;
+    case 'back_top':
+      push(FOE, cx, cy+6+bob2, 0, {pose:'kneel'});
+      push(YOU, cx, cy-16+bob, 0, {pose:'kneel', armsFwd:true, scale:.92});
+      break;
+    case 'back_bottom':
+      push(YOU, cx, cy+6+bob, 0, {pose:'kneel'});
+      push(FOE, cx, cy-16+bob2, 0, {pose:'kneel', armsFwd:true, scale:.92});
+      break;
+  }
+  return S;
+}
+
+function draw() {
+  const w = cv.width, h = cv.height;
+  if (!w || !h) return;
+  ctx.save();
+  ctx.scale(1,1);
+  // фон-зал
+  ctx.fillStyle = '#141a26'; ctx.fillRect(0,0,w,h);
+  // татами: внешняя зона безопасности
+  const m = Math.min(w,h)*0.045;
+  ctx.fillStyle = '#b23b3b';
+  roundRect(m, m, w-2*m, h-2*m, 18*devicePixelRatio); ctx.fill();
+  // рабочая зона
+  const m2 = m + Math.min(w,h)*0.09;
+  ctx.fillStyle = '#3e7c4f';
+  roundRect(m2, m2, w-2*m2, h-2*m2, 12*devicePixelRatio); ctx.fill();
+  // шахматка матов
+  ctx.save();
+  ctx.beginPath(); roundRect(m2, m2, w-2*m2, h-2*m2, 12*devicePixelRatio); ctx.clip();
+  const cell = Math.min(w,h)/6;
+  ctx.fillStyle = 'rgba(255,255,255,.05)';
+  for (let ix=0; ix<12; ix++) for (let iy=0; iy<12; iy++)
+    if ((ix+iy)%2===0) ctx.fillRect(m2+ix*cell, m2+iy*cell, cell, cell);
+  ctx.restore();
+  // центр
+  ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 3*devicePixelRatio;
+  ctx.beginPath(); ctx.arc(w/2, h/2, Math.min(w,h)*0.14, 0, Math.PI*2); ctx.stroke();
+
+  // бойцы
+  const scale = Math.min(w,h)/340;
+  const scene = sceneFor(G.pos, w/scale, h/scale, G.time);
+  ctx.save(); ctx.scale(scale, scale);
+  // тень
+  for (const f of scene) {
+    ctx.fillStyle = 'rgba(0,0,0,.25)';
+    ctx.beginPath(); ctx.ellipse(f.x, f.y+8, 34*(f.scale||1), 20*(f.scale||1), 0, 0, Math.PI*2); ctx.fill();
+  }
+  for (const f of scene) drawFighter(f.x, f.y, f.rot, f);
+  ctx.restore();
+
+  // индикатор защиты
+  if (G.time < G.defUntil && G.screen==='fight') {
+    ctx.fillStyle = 'rgba(64,145,108,.9)';
+    ctx.font = 'bold ' + 14*devicePixelRatio + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🛡 ЗАЩИТА АКТИВНА', w/2, h - 30*devicePixelRatio);
+  }
+  ctx.restore();
+}
+function roundRect(x,y,w,h,r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+/* ═══════════════════════════ МЕНЮ / СОБЫТИЯ ═══════════════════════════ */
+function chipGroup(boxId, onPick) {
+  const box = $(boxId);
+  box.addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    box.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));
+    b.classList.add('sel');
+    onPick(+b.dataset.v);
+    sndTap();
+  });
+}
+chipGroup('diffChips',  v => G.diff = v);
+chipGroup('roundChips', v => G.totalRounds = v);
+chipGroup('timeChips',  v => G.roundTime = v);
+
+$('btnStart').onclick = () => {
+  $('foeName').textContent = DIFFS[G.diff].name;
+  startMatch();
+};
+$('btnNextRound').onclick = () => startRound();
+$('btnAgain').onclick = () => { $('foeName').textContent = DIFFS[G.diff].name; startMatch(); };
+$('btnMenu').onclick = () => {
+  G.screen = 'menu';
+  $('end').classList.add('hidden');
+  $('menu').classList.remove('hidden');
+};
+
+/* Быстрые тапы: используем pointerdown для отзывчивости на телефоне */
+['stBtn','qteBtn'].forEach(id => {
+  $(id).addEventListener('pointerdown', e => e.preventDefault());
+});
+document.addEventListener('dblclick', e => e.preventDefault(), {passive:false});
+
+resize();
+updateHUD();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
